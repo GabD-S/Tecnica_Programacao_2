@@ -1,0 +1,7 @@
+# Minimal Doxygen config
+PROJECT_NAME           = "TP2 - Sistema de Backup"
+OUTPUT_DIRECTORY       = docs
+INPUT                  = src include
+RECURSIVE              = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO

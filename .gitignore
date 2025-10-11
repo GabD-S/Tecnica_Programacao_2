@@ -1,0 +1,13 @@
+# Build artifacts
+/build/
+/bin/
+*.o
+*.gcno
+*.gcda
+*.gcov
+
+# Doxygen output
+/docs/
+
+# Test temp dirs
+_tmp_test/

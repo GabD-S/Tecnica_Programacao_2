@@ -1,0 +1,283 @@
+% relatorio_tp2_backup.tex
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{booktabs}
+
+\geometry{left=25mm,right=25mm,top=25mm,bottom=25mm}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue}
+
+\title{Trabalho 2 -- Sistema de Backup (HD $\leftrightarrow$ Pen-drive) \\ \large especificação e plano de testes}
+\author{Disciplina: Técnicas de Programação 2 \\ Departamento de Ciência da Computação -- UnB}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  Documento técnico que descreve, de forma objetiva, o escopo e o plano de desenvolvimento do \emph{Trabalho 2} (sistema de backup) conforme a especificação entregue na disciplina. O conteúdo segue estritamente os materiais de apoio fornecidos (aulas sobre teste caixa fechada e caixa aberta e o enunciado do trabalho) e contém:
+  (i) requisitos do sistema, (ii) uso das tabelas de decisão para geração de testes caixa fechada, (iii) estratégia de cobertura caixa aberta (caminhos e expressões regulares), (iv) requisitos de ferramentas e integração, e (v) instruções para empacotamento.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+\section{Introdução}
+Este documento organiza a implementação e o processo de testes do sistema de espelhamento de arquivos entre um diretório representando o \texttt{HD} e outro representando o \texttt{Pen-drive}. O objetivo é implementar o sistema conforme a especificação do trabalho e exercitar práticas de desenvolvimento orientado a testes (TDD), cobertura de código e verificação estática/dinâmica, seguindo as aulas ``Aula Testes 1'' e ``Aula Testes 2''.
+
+\section{Escopo e requisitos}
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item O sistema deve ler um arquivo de configuração chamado \texttt{Backup.parm} que lista os nomes dos arquivos a sincronizar.
+  \item O utilitário deve suportar duas operações principais: \texttt{backup} (copiar do HD para o Pen-drive) e \texttt{restauracao} (copiar do Pen-drive para o HD).
+  \item Para cada arquivo listado em \texttt{Backup.parm}, o programa deve decidir uma ação segundo a tabela de decisão apresentada nas aulas: salvar (hd $\rightarrow$ pen), restaurar (pen $\rightarrow$ hd), excluir (pen), nada, erro ou impossível.
+  \item O sistema deve ser modular (arquivos \texttt{backup.h/backup.c} ou \texttt{backup.hpp/backup.cpp}) e possuir um arquivo de testes (\texttt{testa_backup.c/cpp}) que implemente os casos derivados da tabela de decisão.
+  \item O projeto deve ser desenvolvido em C ou C++ e usar um framework de testes (gtest ou catch).
+  \item Deve-se utilizar controle de versão (git) e manter histórico com pelo menos 30 commits; cada teste criado deve ter pelo menos um commit e o ciclo TDD para cada coluna da tabela deve seguir RED-GREEN-REFACTOR (mínimo 3 commits por teste).
+  \item Ferramentas obrigatórias: \texttt{cppcheck}, \texttt{cpplint}, \texttt{valgrind}, \texttt{gcov} e \texttt{doxygen}.
+\end{itemize}
+
+\section{Tabela de decisão}
+A tabela de decisão é a base para a geração dos casos de teste caixa fechada. Para representar fielmente a tabela apresentada nas aulas, a imagem abaixo foi incluída sem alterações. Cada coluna da tabela corresponde a um teste que deve ser implementado (criar ambiente, executar a operação e verificar a ação resultante).
+
+\begin{figure}[htb]
+  \centering
+  % substitua o nome do ficheiro de imagem caso necessário
+  \includegraphics[width=\textwidth]{a2714c20-18d1-49cb-b726-b3daa35500f0.png}
+  \caption{Tabela de decisão (extraída dos slides da disciplina). Cada coluna define uma combinação de condições e a(s) ação(ões) resultantes.}
+  \label{fig:tabela-decisao}
+\end{figure}
+
+\section{Roteiro detalhado (passos a serem tomados)}
+Abaixo está uma versão detalhada, prática e sequencial para desenvolver o trabalho seguindo TDD e os critérios das aulas. Este texto deve ser seguido como procedimento de referência durante a implementação.
+
+\subsection{Parte 1: Entendendo o Sistema de Backup}
+O objetivo do trabalho é implementar um sistema de espelhamento entre um \emph{HD} e um \emph{Pen-drive}. A lógica não deve ser inventada: siga estritamente a tabela de decisão da ``Aula Testes 2''. A tabela define como o programa deve se comportar para cada arquivo individual (\texttt{ArqX}) listado em \texttt{Backup.parm}.
+
+A lógica se baseia nas seguintes condições:
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item \textbf{Operação solicitada:} backup (HD $\rightarrow$ Pen-drive) ou restauração (Pen-drive $\rightarrow$ HD).
+  \item \textbf{Existência do arquivo de configuração:} se \texttt{Backup.parm} não existir, a operação é considerada \emph{impossível}.
+  \item \textbf{Existência dos arquivos:} ArqX existe no HD? existe no Pen-drive?
+  \item \textbf{Comparação de datas:} quando existe em ambos, qual é mais recente?
+\end{itemize}
+
+Ações possíveis:
+\begin{description}[leftmargin=*,noitemsep]
+  \item[Salvar (HD $\rightarrow$ Pen-drive)] copiar do HD para o Pen-drive.
+  \item[Restaurar (Pen-drive $\rightarrow$ HD)] copiar do Pen-drive para o HD.
+  \item[Excluir] remover o arquivo do Pen-drive (não utilizado em todos os cenários).
+  \item[Nada] nenhuma ação.
+  \item[Erro] condição inesperada (ex.: operação \texttt{backup} mas arquivo não existe no HD).
+  \item[Impossível] condição que impede execução (ex.: falta de \texttt{Backup.parm}).
+\end{description}
+
+Exemplos:
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item \textbf{Backup simples:} operação = \texttt{backup}, ArqX existe no HD e não existe no Pen-drive $\Rightarrow$ ação = HD $\rightarrow$ Pen-drive.
+  \item \textbf{Restauração:} operação = \texttt{restauracao}, ArqX existe no Pen-drive e é mais novo que o do HD $\Rightarrow$ ação = Pen-drive $\rightarrow$ HD.
+  \item \textbf{Nada a fazer:} operação = \texttt{backup}, ArqX existe em ambos com mesma data $\Rightarrow$ ação = nada.
+  \item \textbf{Erro:} operação = \texttt{backup}, ArqX listado em \texttt{Backup.parm} não existe no HD $\Rightarrow$ ação = erro.
+\end{itemize}
+
+\subsection{Parte 2: Passos para desenvolver o trabalho (roteiro TDD)}
+Siga o ciclo TDD: criar teste que falha (RED), implementar o código mínimo para passar (GREEN), refatorar (REFACTOR). Para este trabalho o processo foi detalhado em passos práticos:
+
+\paragraph{Passo 0: Preparação do ambiente}
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item Instale as ferramentas: compilador C/C++, make, git, framework de teste (gtest ou Catch), \texttt{cpplint}, \texttt{cppcheck}, \texttt{valgrind}, \texttt{gcov} e \texttt{doxygen}.
+  \item Configure o git: \texttt{git config --global user.name "Seu Nome"} e \texttt{git config --global user.email seu@exemplo}.
+\end{enumerate}
+
+\paragraph{Passo 1: Estrutura inicial e git}
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item Crie o diretório do projeto e inicialize o repositório: \texttt{git init}.
+  \item Crie os arquivos iniciais (vazios ou com esqueleto):
+    \texttt{backup.h/backup.hpp}, \texttt{backup.c/backup.cpp}, \texttt{testa_backup.c/testa_backup.cpp}, \texttt{Makefile}.
+  \item Faça o primeiro commit: \texttt{git add .; git commit -m "estrutura inicial do projeto"}.
+\end{enumerate}
+
+\paragraph{Passo 2: O ciclo TDD -- testar a tabela de decisão}
+Para cada coluna da tabela de decisão crie um teste separado. Exemplo de fluxo para uma coluna (arquivo existe no HD e é mais novo que no Pen-drive, operação = \texttt{backup}):
+
+\textbf{Escrever o teste (RED)}
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item Em \texttt{testa_backup.cpp} escreva uma função de teste que:
+    \begin{itemize}[leftmargin=*,noitemsep]
+      \item cria diretórios temporários \texttt{hd/} e \texttt{pen/};
+      \item cria \texttt{Backup.parm} com o nome \texttt{ArqX};
+      \item cria \texttt{hd/ArqX} com timestamp mais recente;
+      \item cria \texttt{pen/ArqX} com conteúdo antigo;
+      \item chama a função pública do módulo, ex: \texttt{executar\_backup(hd, pen, "Backup.parm", OP\_BACKUP)}.
+    \end{itemize}
+  \item As assertivas do teste devem verificar que, ao final, o arquivo em \texttt{pen/ArqX} foi atualizado (conteúdo e/ou timestamp).
+  \item Faça commit: \texttt{git commit -m "test: adiciona teste coluna X (hd mais novo)"}.
+\end{enumerate}
+
+\textbf{Escrever o código mínimo (GREEN)}
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item Implementar em \texttt{backup.c/backup.cpp} a menor lógica necessária para que o teste passe:
+    \begin{itemize}[leftmargin=*,noitemsep]
+      \item leitura de \texttt{Backup.parm};
+      \item checagem de existência dos arquivos;
+      \item comparação de timestamps;
+      \item operação de cópia básica (pode ser uma cópia simples via leitura/escrita).
+    \end{itemize}
+  \item Compile e rode o teste até que passe.
+  \item Faça commit: \texttt{git commit -m "feat: implementa caso mínimo para coluna X"}.
+\end{enumerate}
+
+\textbf{Refatorar (REFACTOR)}
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item Melhorar código: modularizar, remover duplicação, adicionar comentários Doxygen.
+  \item Rodar \texttt{cppcheck} e \texttt{cpplint}, corrigir avisos/erros relevantes.
+  \item Rodar \texttt{valgrind} para checar vazamentos.
+  \item Fazer commit: \texttt{git commit -m "refactor: limpa implementação coluna X"}.
+\end{enumerate}
+
+\paragraph{Passo 3: Repetir o ciclo}
+Repita RED-GREEN-REFACTOR para todas as colunas da tabela de decisão (cada coluna = um teste). Certifique-se de que cada coluna representa exatamente a combinação de condições indicada na tabela.
+
+\paragraph{Passo 4: Integração contínua das ferramentas}
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item Em cada refatoração: execute \texttt{cpplint} e \texttt{cppcheck}.
+  \item Periodicamente: rode \texttt{valgrind} nos testes e ajuste memória.
+  \item Após reunir testes suficientes: compile com flags de cobertura (\texttt{-ftest-coverage -fprofile-arcs}) e execute \texttt{gcov} para gerar relatórios. Meta: cobertura $\geq 80\%$ por módulo.
+\end{itemize}
+
+\paragraph{Passo 5: Teste de cobertura de caminhos (caixa aberta)}
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item Para funções com fluxo complexo (ifs aninhados, loops), desenhe o grafo de controle e rotule blocos conforme a técnica da Aula Testes 1.
+  \item Extraia a expressão regular de caminhos e gere casos abstratos (ex.: 0 iterações, 1 iteração, arrasto+1).
+  \item Transforme casos abstratos em casos semânticos e, em seguida, em casos valorados (arquivos concretos).
+  \item Implemente testes que executem explicitamente esses caminhos.
+\end{enumerate}
+
+\paragraph{Passo 6: Documentação e finalização}
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item Adicione assertivas de entrada e saída (pré e pós-condições) nos comentários Doxygen de todas as funções públicas.
+  \item Gere documentação HTML com Doxygen (\texttt{doxygen Doxyfile}).
+  \item Crie \texttt{leiame.txt} com instruções de compilação, execução e requisitos.
+  \item Execute \texttt{make clean} e compacte todo o projeto, incluindo o diretório \texttt{.git}, em um arquivo \texttt{.zip} para entrega.
+\end{enumerate}
+
+\section{Geração dos casos de teste (caixa fechada)}
+\subsection{Princípio}
+Para cada coluna da tabela de decisão deve ser criado um caso de teste. O teste executa o cenário correspondente (por exemplo: Backup.parm presente, operação = \texttt{backup}, arquivo existe somente no HD, ou existe em ambos e hd mais novo, etc.) e verifica a ação esperada (cópia hd$\rightarrow$pen, cópia pen$\rightarrow$hd, faz nada, erro, impossível).
+
+\subsection{Procedimento para cada teste}
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item criar uma área de teste temporária com duas pastas: \texttt{hd/} e \texttt{pen/}.
+  \item criar (ou não) o arquivo \texttt{Backup.parm} com a lista de nomes (conforme a coluna testada).
+  \item criar arquivos com carimbos de tempo (timestamps) apropriados para simular \texttt{hd} mais novo, \texttt{pen} mais novo, mesmo timestamp, ausência de arquivo, etc.
+  \item executar a função/rotina pública do módulo de backup com a operação desejada.
+  \item verificar o resultado: existência e conteúdo dos arquivos de destino ou presença das mensagens/erros registrados; validar saídas esperadas.
+  \item reportar sucesso/falha e commitar alterações relevantes no git seguindo TDD.
+\end{enumerate}
+
+\section{Cobertura estrutural (caixa aberta)}
+\subsection{Critérios a usar}
+Baseado nos conceitos da ``Aula Testes 1'', as métricas e critérios a aplicar são:
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item cobertura de instruções: garantir que cada instrução relevante do módulo seja executada por ao menos um teste.
+  \item cobertura de arestas/decisões: executar cada ramo lógico (ifs) e aresta do grafo de controle.
+  \item cobertura de caminhos: identificar expressão regular de caminhos para funções mais complexas (laços e decisões aninhadas) e selecionar um conjunto representativo de caminhos (0 iterações, 1 iteração e arrasto+1).
+\end{itemize}
+
+\subsection{Derivação de caminhos}
+Para cada função que contenha seleção/iteração significativa (por exemplo: leitura do \texttt{Backup.parm}, iteração sobre linhas e lógica de decisão por arquivo) deve-se:
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item rotular blocos e controlar o fluxo conforme técnica das aulas;
+  \item extrair a expressão regular de caminhos (usando sintaxe de processamento estrutural);
+  \item gerar casos de teste abstratos a partir dessa expressão e transformá-los em casos semânticos e, finalmente, em casos valorados (valores concretos dos arquivos).
+\end{enumerate}
+
+\section{Assertivas e documentação das funções}
+Todas as funções públicas devem conter comentários no estilo Javadoc/Doxygen com:
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item descrição da função;
+  \item parâmetros com suas precondições (assertivas de entrada);
+  \item valores de retorno e pós-condições (assertivas de saída);
+  \item contratos e possíveis códigos de erro.
+\end{itemize}
+Exemplo (resumido, para ser incluído no código fonte):
+\begin{verbatim}
+/***************************************************************************
+* Função: executar_backup
+* Descrição:
+*   Executa sincronização dos arquivos listados em Backup.parm entre hd_path
+*   e pen_path, de acordo com a operação solicitada (backup ou restauracao).
+* Parâmetros:
+*   hd_path   - caminho para diretório representando o HD (non-NULL).
+*   pen_path  - caminho para diretório representando o Pen-drive (non-NULL).
+*   param_file- caminho para Backup.parm (non-NULL).
+*   op        - operação (enum) OP_BACKUP ou OP_RESTORE.
+* Valor retornado:
+*   0 em sucesso; >0 código de erro conforme especificação.
+* Assertivas de entrada:
+*   hd_path != NULL
+*   pen_path != NULL
+*   param_file != NULL
+* Assertivas de saída:
+*   em retorno 0, todas as ações executadas de acordo com a tabela de decisão.
+***************************************************************************/
+\end{verbatim}
+
+\section{Ferramentas, flags e integração}
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item \textbf{Compilador:} gcc/clang (C) ou g++/clang++ (C++).
+  \item \textbf{Flags para cobertura:} adicionar em \texttt{CFLAGS/CXXFLAGS} as opções \texttt{-ftest-coverage -fprofile-arcs} para geração de dados do \texttt{gcov}.
+  \item \textbf{Análise estática:} \texttt{cppcheck --enable=warning .} e \texttt{cpplint} conforme guia de estilo.
+  \item \textbf{Análise dinâmica:} \texttt{valgrind --leak-check=full ./seu_executavel}.
+  \item \textbf{Teste unitário:} usar \texttt{gtest} ou \texttt{catch2} para automatizar os casos derivados da tabela; criar alvo \texttt{make test} que execute a suíte de testes.
+  \item \textbf{Documentação:} usar Doxygen; incluir um \texttt{Doxyfile} mínimo e gerar HTML.
+  \item \textbf{Controle de versão:} git com commits frequentes; o diretório \texttt{.git} deve ser enviado compactado junto com o trabalho.
+\end{itemize}
+
+\section{Requisitos de avaliação e entrega}
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item cobertura mínima por módulo: \textbf{80\%} medido por \texttt{gcov};
+  \item ao menos \textbf{30 commits} no histórico Git relacionados ao desenvolvimento TDD;
+  \item pelo menos 3 commits por teste (RED-GREEN-REFACTOR) sempre que aplicável;
+  \item incluir arquivo \texttt{leiame.txt} com instruções de compilação e execução;
+  \item compactar e enviar todo o diretório do projeto incluindo \texttt{.git} em um único \texttt{.zip} cujo nome siga o formato solicitado no enunciado.
+\end{itemize}
+
+\section{Instruções básicas de compilação e execução (exemplo de targets)}
+No \texttt{Makefile} deve haver pelo menos os alvos:
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item \texttt{all} -- compilar biblioteca/executável;
+  \item \texttt{test} -- compilar e rodar os testes automatizados;
+  \item \texttt{coverage} -- compilar com flags de cobertura e gerar relatórios \texttt{gcov};
+  \item \texttt{lint} -- rodar \texttt{cppcheck} e \texttt{cpplint};
+  \item \texttt{clean} -- remover binários e arquivos temporários;
+  \item \texttt{doc} -- gerar documentação Doxygen.
+\end{itemize}
+
+\section{Empacotamento final}
+Ao finalizar o trabalho:
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item rodar \texttt{make clean} e preparar diretório com: \texttt{src/}, \texttt{tests/}, \texttt{docs/}, \texttt{Makefile}, \texttt{leiame.txt}, \texttt{Backup.parm}, e demais arquivos.
+  \item compactar todo o diretório do projeto incluindo \texttt{.git} em um único \texttt{.zip} para entrega.
+\end{enumerate}
+
+\section{Conclusão}
+Este documento concentra, de forma objetiva e estrita, os elementos necessários para implementar e testar o sistema de backup conforme os materiais de referência fornecidos. A tabela de decisão presente nas aulas é a fonte direta para geração dos casos de teste caixa fechada; a cobertura estrutural (caixa aberta) e as ferramentas indicadas deverão garantir qualidade e a rastreabilidade exigida pelo trabalho.
+
+\appendix
+\section{Referências (materiais fornecidos)}
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item Slides: \emph{Aula Testes 1} (critério caixa aberta).
+  \item Slides: \emph{Aula Testes 2} (tabelas de decisão e caixa fechada).
+  \item Enunciado: \emph{TP2 -- Trabalho 2: Sistema Backup}.
+\end{itemize}
+
+\end{document}
