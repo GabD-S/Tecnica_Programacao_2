@@ -91,3 +91,20 @@ TEST_CASE("backup: file exists on both and HD newer -> pen is updated") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: listed file missing on HD -> returns error") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_test_case3";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Parameter file lists a file that doesn't exist on HD
+    std::ofstream(tmp / "Backup.parm") << "ArqMissing.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    // Decision table: for backup op, if file doesn't exist on HD => error
+    REQUIRE(r.code != 0);
+
+    fs::remove_all(tmp);
+}

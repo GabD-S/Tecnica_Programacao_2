@@ -39,8 +39,7 @@ ActionResult execute_backup(const std::string& hdPath,
             fs::path dst = fs::path(penPath) / name;
 
             if (!fs::exists(src)) {
-                // In full implementation this might be an error per table decision; keep going for now.
-                continue;
+                return {4, "source file missing on HD"};
             }
 
             if (!fs::exists(dst)) {
