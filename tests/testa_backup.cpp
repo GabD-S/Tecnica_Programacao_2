@@ -108,3 +108,33 @@ TEST_CASE("backup: listed file missing on HD -> returns error") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: files have identical timestamps -> do nothing") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_test_case4";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Create both files quickly to keep same mtime
+    {
+        std::ofstream(tmp / "hd" / "ArqSame.txt") << "hd-keep";
+        std::ofstream(tmp / "pen" / "ArqSame.txt") << "pen-original";
+    }
+
+    // Align timestamps explicitly just in case
+    auto ts = fs::last_write_time(tmp / "hd" / "ArqSame.txt");
+    fs::last_write_time(tmp / "pen" / "ArqSame.txt", ts);
+
+    std::ofstream(tmp / "Backup.parm") << "ArqSame.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    REQUIRE(r.code == 0);
+
+    // Expect pen NOT to change because timestamps are equal
+    std::ifstream in(tmp / "pen" / "ArqSame.txt");
+    std::string got; std::getline(in, got);
+    REQUIRE(got == "pen-original");
+
+    fs::remove_all(tmp);
+}
