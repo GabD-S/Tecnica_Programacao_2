@@ -27,3 +27,27 @@ TEST_CASE("execute_backup returns error when param file missing or empty") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: file exists only on HD -> copied to pen") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_test_case1";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Create file on HD only
+    std::ofstream(tmp / "hd" / "ArqX.txt") << "content-x";
+    // Parameter file listing ArqX.txt
+    std::ofstream(tmp / "Backup.parm") << "ArqX.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+
+    // RED expectation: pen should contain the copied file with same content
+    REQUIRE(r.code == 0);
+    REQUIRE(fs::exists(tmp / "pen" / "ArqX.txt"));
+    std::ifstream in(tmp / "pen" / "ArqX.txt");
+    std::string got; std::getline(in, got);
+    REQUIRE(got == "content-x");
+
+    fs::remove_all(tmp);
+}

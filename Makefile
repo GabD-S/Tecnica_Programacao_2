@@ -67,8 +67,9 @@ coverage: clean $(TEST_BIN)
 	$(TEST_BIN)
 	@echo "Capturing lcov data..."
 	lcov --capture --directory . --output-file $(BUILD_DIR)/coverage.info
-	lcov --remove $(BUILD_DIR)/coverage.info '/usr/*' --output-file $(BUILD_DIR)/coverage_filtered.info
-	genhtml $(BUILD_DIR)/coverage_filtered.info --output-directory $(BUILD_DIR)/coverage_html
+	# Remove system and third-party files, keep project code
+	lcov --remove $(BUILD_DIR)/coverage.info '/usr/*' '*/catch.hpp' --output-file $(BUILD_DIR)/coverage_project.info || true
+	genhtml $(BUILD_DIR)/coverage_project.info --output-directory $(BUILD_DIR)/coverage_html --no-source --ignore-errors source --synthesize-missing
 	@echo "Coverage report: $(BUILD_DIR)/coverage_html/index.html"
 
 doc:
