@@ -278,3 +278,28 @@ TEST_CASE("backup: pen newer than HD -> do nothing") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: ignore blank lines in Backup.parm") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_test_case9";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Create one valid file and some blank/space lines
+    std::ofstream(tmp / "hd" / "Valid.txt") << "ok";
+    {
+        std::ofstream parm(tmp / "Backup.parm");
+        parm << "\n   \nValid.txt\n\n";
+    }
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    REQUIRE(r.code == 0);
+    REQUIRE(std::filesystem::exists(tmp / "pen" / "Valid.txt"));
+
+    std::ifstream in(tmp / "pen" / "Valid.txt");
+    std::string got; std::getline(in, got);
+    REQUIRE(got == "ok");
+
+    fs::remove_all(tmp);
+}
