@@ -48,6 +48,17 @@ ActionResult execute_backup(const std::string& hdPath,
                 std::ifstream in(src, std::ios::binary);
                 std::ofstream out(dst, std::ios::binary);
                 out << in.rdbuf();
+            } else {
+                // Exists in both: copy only if HD newer than Pen
+                std::error_code ec1, ec2;
+                auto ts_src = fs::last_write_time(src, ec1);
+                auto ts_dst = fs::last_write_time(dst, ec2);
+                if (!ec1 && !ec2 && ts_src > ts_dst) {
+                    std::ifstream in(src, std::ios::binary);
+                    std::ofstream out(dst, std::ios::binary | std::ios::trunc);
+                    out << in.rdbuf();
+                    // Optionally align mtime, but most filesystems update automatically on write
+                }
             }
         }
     } catch (const std::exception& e) {
