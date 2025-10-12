@@ -155,3 +155,126 @@ TEST_CASE("backup: file exists only on Pen -> error (HD missing)") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: nested path on HD -> creates dirs and copies to pen") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_test_case6";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd" / "dir" / "sub");
+    fs::create_directories(tmp / "pen");
+
+    // Create nested file only on HD
+    {
+        std::ofstream(tmp / "hd" / "dir" / "sub" / "Deep.txt") << "deep-content";
+    }
+    // Param file lists nested relative path
+    std::ofstream(tmp / "Backup.parm") << "dir/sub/Deep.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    REQUIRE(r.code == 0);
+
+    // Expect directory tree created and file copied on pen
+    REQUIRE(fs::exists(tmp / "pen" / "dir" / "sub" / "Deep.txt"));
+    std::ifstream in(tmp / "pen" / "dir" / "sub" / "Deep.txt");
+    std::string got; std::getline(in, got);
+    REQUIRE(got == "deep-content");
+
+    fs::remove_all(tmp);
+}
+
+TEST_CASE("backup: multiple entries (HD-only, HD-newer, equal) -> respective actions") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_test_case7";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // A: only on HD -> copy
+    std::ofstream(tmp / "hd" / "A.txt") << "A";
+
+    // B: both exist, HD newer -> update pen
+    {
+        std::ofstream(tmp / "pen" / "B.txt") << "old";
+    }
+    std::this_thread::sleep_for(1100ms);
+    {
+        std::ofstream(tmp / "hd" / "B.txt") << "new";
+    }
+
+    // C: both exist, equal timestamps -> do nothing (keep pen content)
+    {
+        std::ofstream(tmp / "hd" / "C.txt") << "hd-keep";
+        std::ofstream(tmp / "pen" / "C.txt") << "pen-keep";
+    }
+    auto tsC = fs::last_write_time(tmp / "hd" / "C.txt");
+    fs::last_write_time(tmp / "pen" / "C.txt", tsC);
+
+    // Param file lists all
+    std::ofstream parm(tmp / "Backup.parm");
+    parm << "A.txt\nB.txt\nC.txt\n";
+    parm.close();
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    REQUIRE(r.code == 0);
+
+    // Validate A copied
+    REQUIRE(fs::exists(tmp / "pen" / "A.txt"));
+    {
+        std::ifstream in(tmp / "pen" / "A.txt");
+        std::string got; std::getline(in, got);
+        REQUIRE(got == "A");
+    }
+
+    // Validate B updated
+    {
+        std::ifstream in(tmp / "pen" / "B.txt");
+        std::string got; std::getline(in, got);
+        REQUIRE(got == "new");
+    }
+
+    // Validate C unchanged
+    {
+        std::ifstream in(tmp / "pen" / "C.txt");
+        std::string got; std::getline(in, got);
+        REQUIRE(got == "pen-keep");
+    }
+
+    fs::remove_all(tmp);
+}
+
+TEST_CASE("backup: pen newer than HD -> do nothing") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_test_case8";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Create older file on HD
+    {
+        std::ofstream(tmp / "hd" / "PenNew.txt") << "hd-old";
+    }
+    // Ensure timestamp difference so Pen is newer
+    std::this_thread::sleep_for(1100ms);
+    {
+        std::ofstream(tmp / "pen" / "PenNew.txt") << "pen-new";
+    }
+
+    std::ofstream(tmp / "Backup.parm") << "PenNew.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    REQUIRE(r.code == 0);
+
+    // Expect pen unchanged (should still be pen-new)
+    std::ifstream in(tmp / "pen" / "PenNew.txt");
+    std::string got; std::getline(in, got);
+    REQUIRE(got == "pen-new");
+
+    // And pen mtime should be >= hd mtime
+    auto m_hd = fs::last_write_time(tmp / "hd" / "PenNew.txt");
+    auto m_pen = fs::last_write_time(tmp / "pen" / "PenNew.txt");
+    REQUIRE(m_pen >= m_hd);
+
+    fs::remove_all(tmp);
+}
