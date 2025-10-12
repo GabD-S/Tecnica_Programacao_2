@@ -138,3 +138,20 @@ TEST_CASE("backup: files have identical timestamps -> do nothing") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: file exists only on Pen -> error (HD missing)") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_test_case5";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // File exists only on pen
+    std::ofstream(tmp / "pen" / "OnlyPen.txt") << "pen-content";
+    std::ofstream(tmp / "Backup.parm") << "OnlyPen.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    REQUIRE(r.code != 0); // Expect error in backup when HD source missing
+
+    fs::remove_all(tmp);
+}
