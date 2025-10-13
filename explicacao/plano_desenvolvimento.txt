@@ -1,0 +1,133 @@
+Plano de Desenvolvimento — TP2: Sistema de Backup (HD ↔ Pen)
+
+1) Visão Geral do Projeto
+- Objetivo: Implementar um sistema de sincronização entre duas pastas (HD e Pen-drive) com base em um arquivo de parâmetros (Backup.parm), obedecendo estritamente a tabela de decisão da disciplina.
+- Linguagem/Stack: C++17, testes com Catch2 (single header), Makefile com alvos de build/test/qualidade.
+- Ferramentas de Qualidade: cpplint (estilo), cppcheck (análise estática), valgrind (memória), gcov/lcov (cobertura), doxygen (documentação).
+- Requisitos de Avaliação: Cobertura ≥ 80% por módulo; ≥ 30 commits, preferencialmente bem mais, com ciclo TDD (RED/GREEN/REFACTOR) para cada caso derivado da tabela de decisão; documentação por Doxygen; entrega com .git incluso.
+
+2) Escopo Funcional
+- Ler Backup.parm (lista de arquivos alvo por linha).
+- Operações:
+  - backup: HD → Pen (de acordo com existência e timestamps).
+  - restauracao: Pen → HD (de acordo com existência e timestamps).
+- Decisões por arquivo (ArqX): salvar, restaurar, excluir (quando aplicável), nada, erro, impossível (conforme tabela de decisão das aulas).
+- Tratamento de erros: ausência de Backup.parm, arquivo listado inexistente na origem, permissões, caminhos inválidos.
+
+3) Estrutura do Projeto
+- include/: headers públicos (ex.: backup.hpp)
+- src/: implementação (ex.: backup.cpp)
+- tests/: testes (ex.: testa_backup.cpp)
+- bin/: executáveis de testes
+- build/: objetos/relatórios/cobertura
+- docs/: documentação gerada pelo doxygen
+- explicacao/: materiais de apoio, planos e roteiros
+
+4) Fluxo de Trabalho (Branches e Commits)
+- Branches:
+  - main: estável e liberável
+  - develop: integração contínua
+  - feature/*: funcionalidades (ex.: decision-table-backup, restore-flow)
+  - test/*: infraestrutura e cenários da tabela de decisão
+  - docs/*: documentação/doxygen
+  - chore/*: manutenção/CI/lint/static
+  - refactor/*: refatorações sem alterar comportamento
+- Commits: seguir Convencional Commits (test:, feat:, refactor:, fix:, docs:, chore:, build:, ci:). Cada coluna da tabela de decisão → 3+ commits (RED/GREEN/REFACTOR). Mirar 50–100+ commits totais para bom granularity.
+
+5) Plano Passo a Passo (TDD e Qualidade) — Mirando > 50 commits
+A. Preparação e Ferramental (≈ 6–10 commits)
+  1. chore: add initial Makefile skeleton (alvos básicos) — RED (falha build)
+  2. chore: fix Makefile to compile empty skeleton — GREEN
+  3. test: add Catch2 harness minimal (CATCH_CONFIG_MAIN) — RED
+  4. chore: wire test target in Makefile — GREEN
+  5. chore: add cpplint/cppcheck/valgrind/lcov/doxygen targets — GREEN
+  6. docs: add Doxyfile and README de build — GREEN
+  7. refactor: project tree standardization (src/include/tests)
+  8. chore: add .gitignore e limpeza build/cobertura/docs
+
+B. Leitura de Parâmetros e Casos de Impossível (≈ 5–8 commits)
+  9. test: RED — erro quando Backup.parm ausente
+ 10. feat: GREEN — detectar ausência e retornar código apropriado
+ 11. test: RED — erro quando Backup.parm vazio
+ 12. feat: GREEN — ler lista e validar vazia
+ 13. refactor: extrair util de leitura (read_param_list) + doc doxygen
+ 14. static/lint/mem: corrigir apontamentos do cppcheck/cpplint/valgrind
+
+C. Operação Backup (HD → Pen) — Colunas da Tabela (≈ 15–25 commits)
+  15. test: RED — arquivo só no HD → copiar para Pen
+  16. feat: GREEN — copiar quando não existe no Pen
+  17. refactor: extrair função util de cópia binária + doc
+  18. test: RED — arquivo em ambos, HD mais novo → atualizar Pen
+  19. feat: GREEN — comparação timestamps e cópia condicional
+  20. test: RED — arquivo em ambos, mesma data → nada fazer
+  21. feat: GREEN — pular atualização quando timestamps equivalentes
+  22. test: RED — arquivo listado não existe no HD → erro esperado
+  23. feat: GREEN — retornar erro por caso
+  24. refactor: limpar API de retorno (enum/códigos), doc e asserts
+  25. test: RED — múltiplos arquivos no Backup.parm, mistura de casos
+  26. feat: GREEN — laço e acumulação de resultados
+  27. test: RED — caminhos aninhados (subpastas) e criação de diretórios
+  28. feat: GREEN — criar diretórios pai no destino
+  29. static/mem: correções sinalizadas por cppcheck/valgrind
+  30. coverage: ajustes para manter ≥ 80% dos módulos
+
+D. Operação Restauração (Pen → HD) — Colunas da Tabela (≈ 12–18 commits)
+  31. test: RED — arquivo só no Pen → restaurar para HD
+  32. feat: GREEN — copiar quando não existe no HD
+  33. test: RED — arquivo em ambos, Pen mais novo → atualizar HD
+  34. feat: GREEN — comparação timestamps e cópia condicional
+  35. test: RED — arquivo em ambos, mesma data → nada fazer
+  36. feat: GREEN — pular atualização
+  37. test: RED — arquivo listado não existe no Pen → erro esperado
+  38. feat: GREEN — retornar erro
+  39. refactor: consolidar lógica comum backup/restauracao (funções helper)
+  40. static/mem: rodada de correções + lint
+  41. coverage: garantir cobertura ≥ 80%
+
+E. Casos de Erro/Impossível e Robustez (≈ 6–10 commits)
+  42. test: RED — permissões negadas
+  43. feat: GREEN — reportar erro e seguir/abortar conforme especificação
+  44. test: RED — nomes inválidos/linhas em branco no Backup.parm
+  45. feat: GREEN — sanitizar entradas e ignorar inválidas
+  46. refactor: normalização de caminhos e logs de diagnóstico (opcional)
+  47. docs: ampliar comentários Doxygen com contratos (pré/pós-condições)
+
+F. Integração e Empacotamento (≈ 5–8 commits)
+  48. chore(ci): alvo make ci (lint+static+test)
+  49. docs: leiame.txt com instruções de build/exec/entrega
+  50. chore: script de empacotamento (zip incluindo .git)
+  51. refactor: limpeza final, remoção de código morto
+  52. docs: atualizar README e referência de cobertura
+
+G. Extras (opcional para enriquecer histórico) (≈ 6–12 commits)
+  53. test: RED — cenários de caixa aberta (0, 1, n iterações) para funções-chave
+  54. feat: GREEN — adequações para suportar caminhos e iterações
+  55. perf: micro-ajustes de I/O em cópia (buffers maiores)
+  56. fix: correções pontuais encontradas por cppcheck/valgrind
+  57. chore: templates de PR e CONTRIBUTING.md
+  58. docs: exemplos de uso e prints de cobertura
+
+6) Critérios de Qualidade e Saídas
+- Commits: granularidade alta, mensagens Convencionais; RED/GREEN/REFACTOR claros para cada coluna/cenário.
+- Cobertura: relatório HTML em build/coverage_html; meta ≥ 80% por módulo.
+- Memória: valgrind sem leaks e sem erros; correções de ownership e fechamento de streams.
+- Estilo/Estática: cpplint sem erros críticos; cppcheck sem ‘error’ e ‘warning’ relevantes.
+- Documentação: Doxygen com descrição de módulos, funções públicas e contratos.
+
+7) Como Executar (resumo)
+- Testes
+  make test
+- Lint / Estático
+  make lint
+  make static
+- Memória
+  make memcheck
+- Cobertura
+  make coverage
+- Documentação
+  make doc
+- Limpeza
+  make clean
+
+Observação Final
+Este plano busca exceder 50 commits com TDD disciplinado em cada cenário da tabela de decisão e robustez de ferramentas. Ajuste conforme sua velocidade de desenvolvimento, mas mantenha o padrão: cada cenário → RED, GREEN, REFACTOR, e rode lint/static/mem/coverage regularmente.
