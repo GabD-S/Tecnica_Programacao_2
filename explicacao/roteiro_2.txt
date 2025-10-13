@@ -1,0 +1,31 @@
+Interface de uso (CLI)
+
+Criar um main.cpp simples que aceite: --mode backup|restore, --hd <path>, --pen <path>, --parm <file> (default Backup.parm).
+Imprimir o código/mensagem de retorno e setar exit code conforme ActionResult.code.
+Pequeno teste de fumaça (opcional) que roda o binário com uma pasta temporária.
+Documentação
+
+README: adicionar “Como usar” (CLI e Makefile), exemplos de uso de Backup/Restore, estrutura do Backup.parm (trim, linhas em branco, comentários #/;), e como interpretar códigos de retorno.
+Doxygen: documentar no header (backup.hpp) o contrato das funções, significados de Operation e dos códigos de retorno (1 param faltando/vazio, 2 op não suportada, 3 exceção, 4 missing fonte, 5 falha de escrita).
+Lint/Static/CI
+
+Ajustar target lint para não imprimir apenas “usage” (provável problema de paths com espaço; envolver os globs com aspas e/ou usar find -name).
+Opcional: adicionar GitHub Actions com jobs para make test, static, memcheck; publicar cobertura como artefato (se desejar).
+Cobertura e relatórios
+
+Refinar cobertura para excluir testes e diretórios de build (lcov --remove '/tests/' '/build/'), caso queira focar só em src/include.
+Pequena verificação de cobertura mínima (opcional).
+Acabamento de comportamento (já pronto, mas bom registrar)
+
+Confirmar (via doc e/ou testes de guarda) as decisões:
+Sem recursão implícita para diretórios listados no parm.
+Continuidade com múltiplos erros (missing/write) e precedência do código 5 sobre 4.
+Preservação de timestamps após cópia/atualização em ambos os modos.
+Facilidades de DX
+
+Adicionar um exemplo de Backup.parm no repositório (exemplo mínimo).
+Opcional: scriptzinho make run com parâmetros ou um .vscode/tasks/launch para rodar a CLI com args de exemplo.
+Organização de branches/merge
+
+Abrir PR de feature/backup-symmetry quando você quiser (sem eu abrir).
+Depois do merge: tag opcional (v0.x) e checklist rápido pós-merge.
