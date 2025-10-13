@@ -2,8 +2,17 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <algorithm>
 
 namespace tp2 {
+
+static std::string trim(const std::string& s) {
+    const char* ws = " \t\r\n";
+    auto start = s.find_first_not_of(ws);
+    if (start == std::string::npos) return "";
+    auto end = s.find_last_not_of(ws);
+    return s.substr(start, end - start + 1);
+}
 
 std::vector<std::string> read_param_list(const std::string& paramFile) {
     std::vector<std::string> items;
@@ -11,7 +20,8 @@ std::vector<std::string> read_param_list(const std::string& paramFile) {
     if (!in.is_open()) return items; // empty => caller can treat as impossible
     std::string line;
     while (std::getline(in, line)) {
-        if (!line.empty()) items.push_back(line);
+        auto t = trim(line);
+        if (!t.empty()) items.push_back(t);
     }
     return items;
 }
