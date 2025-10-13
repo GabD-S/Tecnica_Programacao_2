@@ -75,17 +75,26 @@ ActionResult execute_backup(const std::string& hdPath,
 
     try {
         if (op == Operation::Backup) {
+            bool any_missing = false;
+            bool any_write_error = false;
             for (const auto& name : list) {
                 fs::path src = fs::path(hdPath) / name;
                 fs::path dst = fs::path(penPath) / name;
 
-                if (is_dir_or_missing(src)) {
-                    // skip missing or directory entries (no recursive copy)
-                    continue;
+                if (!fs::exists(src)) {
+                    any_missing = true;
+                    continue; // keep processing other entries
+                }
+                if (fs::is_directory(src)) {
+                    continue; // ignore directories (no recursion)
                 }
 
-                (void)backup_copy_or_update(src, dst);
+                if (!backup_copy_or_update(src, dst)) {
+                    any_write_error = true;
+                }
             }
+            if (any_write_error) return {5, "failed to write to pen"};
+            if (any_missing) return {4, "one or more source files missing on hd"};
         } else if (op == Operation::Restore) {
             // Minimal restore: when file exists only on Pen, copy to HD
             bool any_missing = false;
