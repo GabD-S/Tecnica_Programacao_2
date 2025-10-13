@@ -502,3 +502,24 @@ TEST_CASE("backup: mixed scenario (hd-only, hd-newer, equal, missing, pen-newer,
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: continue after missing on HD but return error") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_backup_acc_missing";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // One existing on HD, one missing
+    std::ofstream(tmp / "hd" / "A_b.txt") << "available";
+    std::ofstream(tmp / "Backup.parm") << "B_miss.txt\nA_b.txt\n"; // first missing, then available
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+
+    // RED: Expect non-zero due to missing B_miss.txt, but A_b.txt should be copied to Pen
+    REQUIRE(r.code != 0);
+    REQUIRE(fs::exists(tmp / "pen" / "A_b.txt"));
+    REQUIRE_FALSE(fs::exists(tmp / "pen" / "B_miss.txt"));
+
+    fs::remove_all(tmp);
+}
