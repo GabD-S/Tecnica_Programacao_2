@@ -22,12 +22,6 @@ bool copy_with_mtime_preserve(const std::filesystem::path& src, const std::files
     return true;
 }
 
-// Refactor helpers for backup flow (no behavior change)
-bool is_dir_or_missing(const std::filesystem::path& p) {
-    namespace fs = std::filesystem;
-    return !fs::exists(p) || fs::is_directory(p);
-}
-
 bool backup_copy_or_update(const std::filesystem::path& src, const std::filesystem::path& dst) {
     namespace fs = std::filesystem;
     if (!fs::exists(dst)) {
