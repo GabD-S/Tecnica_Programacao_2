@@ -238,12 +238,17 @@ TEST_CASE("restore: error when HD destination is not writable") {
     fs::create_directories(tmp / "pen");
 
     // Prepare source on pen
-    std::ofstream(tmp / "pen" / "LOCK.txt") << "locked";
+    auto src = tmp / "pen" / "LOCK.txt";
+    std::ofstream(src) << "locked";
     std::ofstream(tmp / "Backup.parm") << "LOCK.txt\n";
 
     // Create destination file and make it read-only (no write permission)
     auto dst = tmp / "hd" / "LOCK.txt";
     std::ofstream(dst) << "old";
+    // Ensure src is newer so restore attempts to update
+    auto newer = fs::file_time_type::clock::now();
+    fs::last_write_time(src, newer);
+    fs::last_write_time(dst, newer - std::chrono::seconds(10));
     fs::permissions(dst, fs::perms::owner_read, fs::perm_options::replace);
 
     auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);

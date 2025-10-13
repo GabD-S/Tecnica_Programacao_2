@@ -56,6 +56,7 @@ ActionResult execute_backup(const std::string& hdPath,
         } else if (op == Operation::Restore) {
             // Minimal restore: when file exists only on Pen, copy to HD
             bool any_missing = false;
+            bool any_write_error = false;
             for (const auto& name : list) {
                 fs::path src = fs::path(penPath) / name;
                 fs::path dst = fs::path(hdPath) / name;
@@ -69,8 +70,11 @@ ActionResult execute_backup(const std::string& hdPath,
                 if (!fs::exists(dst)) {
                     fs::create_directories(dst.parent_path());
                     std::ifstream in(src, std::ios::binary);
+                    if (!in) { any_write_error = true; continue; }
                     std::ofstream out(dst, std::ios::binary);
+                    if (!out) { any_write_error = true; continue; }
                     out << in.rdbuf();
+                    if (!out.good()) { out.close(); any_write_error = true; continue; }
                     out.flush();
                     out.close();
                     // preserve timestamp from pen to HD (set after closing stream)
@@ -82,8 +86,11 @@ ActionResult execute_backup(const std::string& hdPath,
                     auto t_dst = fs::last_write_time(dst);
                     if (t_src > t_dst) {
                         std::ifstream in(src, std::ios::binary);
+                        if (!in) { any_write_error = true; continue; }
                         std::ofstream out(dst, std::ios::binary);
+                        if (!out) { any_write_error = true; continue; }
                         out << in.rdbuf();
+                        if (!out.good()) { out.close(); any_write_error = true; continue; }
                         out.flush();
                         out.close();
                         // keep destination timestamp in sync with source (set after closing stream)
@@ -91,6 +98,7 @@ ActionResult execute_backup(const std::string& hdPath,
                     }
                 }
             }
+            if (any_write_error) return {5, "failed to write to HD"};
             if (any_missing) return {4, "one or more source files missing on pen"};
         } else {
             return {2, "operation not supported in minimal implementation"};
