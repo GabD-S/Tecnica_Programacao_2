@@ -14,9 +14,11 @@ std::vector<std::string> read_param_list(const std::string& paramFile) {
         // trim leading/trailing whitespace
         auto begin = line.find_first_not_of(" \t\r\n");
         auto end = line.find_last_not_of(" \t\r\n");
-        if (begin == std::string::npos) continue; // blank line
-        std::string trimmed = line.substr(begin, end - begin + 1);
-        if (!trimmed.empty()) items.push_back(trimmed);
+    if (begin == std::string::npos) continue; // blank line
+    std::string trimmed = line.substr(begin, end - begin + 1);
+    // Skip comment lines that start with '#' or ';'
+    if (!trimmed.empty() && (trimmed[0] == '#' || trimmed[0] == ';')) continue;
+    if (!trimmed.empty()) items.push_back(trimmed);
     }
     return items;
 }
