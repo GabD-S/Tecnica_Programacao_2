@@ -149,3 +149,30 @@ TEST_CASE("restore: trim spaces in parameter entries") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: ignore comment lines in parameter file") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_restore_case5";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Prepare files
+    std::ofstream(tmp / "pen" / "R5.txt") << "comment-ok";
+
+    // Parameter file with comments and a valid entry
+    std::ofstream parm(tmp / "Backup.parm");
+    parm << "# This is a comment\n";
+    parm << "; Another comment style\n";
+    parm << " R5.txt \n"; // single valid entry surrounded by spaces
+    parm.close();
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+    REQUIRE(r.code == 0);
+    REQUIRE(fs::exists(tmp / "hd" / "R5.txt"));
+    std::ifstream in(tmp / "hd" / "R5.txt");
+    std::string got; std::getline(in, got);
+    REQUIRE(got == "comment-ok");
+
+    fs::remove_all(tmp);
+}
