@@ -315,3 +315,83 @@ TEST_CASE("restore: equal timestamps -> no action") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: mixed scenario (pen-only, pen-newer, equal, missing, unwritable, nested)") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_restore_mixed";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // pen-only: P_ONLY.txt
+    std::ofstream(tmp / "pen" / "P_ONLY.txt") << "only";
+
+    // pen-newer: NEW.txt (exists in both, pen newer)
+    auto hd_new = tmp / "hd" / "NEW.txt";
+    auto pen_new = tmp / "pen" / "NEW.txt";
+    std::ofstream(hd_new) << "old";
+    std::ofstream(pen_new) << "new";
+    auto now = fs::file_time_type::clock::now();
+    fs::last_write_time(hd_new, now - 2s);
+    fs::last_write_time(pen_new, now);
+
+    // equal timestamps: EQ2.txt
+    auto hd_eq = tmp / "hd" / "EQ2.txt";
+    auto pen_eq = tmp / "pen" / "EQ2.txt";
+    std::ofstream(hd_eq) << "hd_eq";
+    std::ofstream(pen_eq) << "pen_eq";
+    auto t_eq = now - 5s;
+    fs::last_write_time(hd_eq, t_eq);
+    fs::last_write_time(pen_eq, t_eq);
+
+    // missing on pen: MISS.txt (listed but absent)
+
+    // unwritable HD: LOCK2.txt (exists in both, pen newer, but HD not writable)
+    auto hd_lock = tmp / "hd" / "LOCK2.txt";
+    auto pen_lock = tmp / "pen" / "LOCK2.txt";
+    std::ofstream(hd_lock) << "old";
+    std::ofstream(pen_lock) << "new_locked";
+    fs::last_write_time(hd_lock, now - 3s);
+    fs::last_write_time(pen_lock, now);
+    fs::permissions(hd_lock, fs::perms::owner_read, fs::perm_options::replace);
+
+    // nested path: DIRX/sub/file.txt (pen-only nested)
+    fs::create_directories(tmp / "pen" / "DIRX" / "sub");
+    std::ofstream(tmp / "pen" / "DIRX" / "sub" / "file.txt") << "nested";
+
+    // Build parameter list
+    std::ofstream parm(tmp / "Backup.parm");
+    parm << "P_ONLY.txt\n";
+    parm << "NEW.txt\n";
+    parm << "EQ2.txt\n";
+    parm << "MISS.txt\n";
+    parm << "LOCK2.txt\n";
+    parm << "DIRX/sub/file.txt\n";
+    parm.close();
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+
+    // Expect write error to dominate (code 5), but other valid copies still happen
+    REQUIRE(r.code != 0);
+    // pen-only copied
+    REQUIRE(fs::exists(tmp / "hd" / "P_ONLY.txt"));
+    // pen-newer updated
+    std::string new_content; { std::ifstream in(hd_new); std::getline(in, new_content);} 
+    REQUIRE(new_content.find("new") != std::string::npos);
+    // equal unchanged
+    std::string eq_content; { std::ifstream in(hd_eq); std::getline(in, eq_content);} 
+    REQUIRE(eq_content == "hd_eq");
+    // missing not created
+    REQUIRE_FALSE(fs::exists(tmp / "hd" / "MISS.txt"));
+    // nested created and copied
+    std::string nested_content; { std::ifstream in(tmp / "hd" / "DIRX" / "sub" / "file.txt"); std::getline(in, nested_content);} 
+    REQUIRE(nested_content == "nested");
+    // unwritable remained old
+    std::string lock_content; { std::ifstream in(hd_lock); std::getline(in, lock_content);} 
+    REQUIRE(lock_content == "old");
+
+    // cleanup: restore permissions
+    fs::permissions(hd_lock, fs::perms::owner_all, fs::perm_options::add);
+    fs::remove_all(tmp);
+}

@@ -5,6 +5,24 @@
 
 namespace tp2 {
 
+namespace {
+// Copy file contents from src to dst, return true on success; preserves src mtime on dst.
+bool copy_with_mtime_preserve(const std::filesystem::path& src, const std::filesystem::path& dst) {
+    namespace fs = std::filesystem;
+    std::ifstream in(src, std::ios::binary);
+    if (!in) return false;
+    std::ofstream out(dst, std::ios::binary);
+    if (!out) return false;
+    out << in.rdbuf();
+    if (!out.good()) { out.close(); return false; }
+    out.flush();
+    out.close();
+    auto t_src = fs::last_write_time(src);
+    fs::last_write_time(dst, t_src);
+    return true;
+}
+}
+
 std::vector<std::string> read_param_list(const std::string& paramFile) {
     std::vector<std::string> items;
     std::ifstream in(paramFile);
@@ -69,32 +87,13 @@ ActionResult execute_backup(const std::string& hdPath,
 
                 if (!fs::exists(dst)) {
                     fs::create_directories(dst.parent_path());
-                    std::ifstream in(src, std::ios::binary);
-                    if (!in) { any_write_error = true; continue; }
-                    std::ofstream out(dst, std::ios::binary);
-                    if (!out) { any_write_error = true; continue; }
-                    out << in.rdbuf();
-                    if (!out.good()) { out.close(); any_write_error = true; continue; }
-                    out.flush();
-                    out.close();
-                    // preserve timestamp from pen to HD (set after closing stream)
-                    auto t_src = fs::last_write_time(src);
-                    fs::last_write_time(dst, t_src);
+                    if (!copy_with_mtime_preserve(src, dst)) { any_write_error = true; continue; }
                 } else {
                     // Both exist: update HD if pen is newer
                     auto t_src = fs::last_write_time(src);
                     auto t_dst = fs::last_write_time(dst);
                     if (t_src > t_dst) {
-                        std::ifstream in(src, std::ios::binary);
-                        if (!in) { any_write_error = true; continue; }
-                        std::ofstream out(dst, std::ios::binary);
-                        if (!out) { any_write_error = true; continue; }
-                        out << in.rdbuf();
-                        if (!out.good()) { out.close(); any_write_error = true; continue; }
-                        out.flush();
-                        out.close();
-                        // keep destination timestamp in sync with source (set after closing stream)
-                        fs::last_write_time(dst, t_src);
+                        if (!copy_with_mtime_preserve(src, dst)) { any_write_error = true; continue; }
                     }
                 }
             }
