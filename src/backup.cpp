@@ -21,6 +21,26 @@ bool copy_with_mtime_preserve(const std::filesystem::path& src, const std::files
     fs::last_write_time(dst, t_src);
     return true;
 }
+
+// Refactor helpers for backup flow (no behavior change)
+bool is_dir_or_missing(const std::filesystem::path& p) {
+    namespace fs = std::filesystem;
+    return !fs::exists(p) || fs::is_directory(p);
+}
+
+bool backup_copy_or_update(const std::filesystem::path& src, const std::filesystem::path& dst) {
+    namespace fs = std::filesystem;
+    if (!fs::exists(dst)) {
+        fs::create_directories(dst.parent_path());
+        return copy_with_mtime_preserve(src, dst);
+    }
+    auto t_src = fs::last_write_time(src);
+    auto t_dst = fs::last_write_time(dst);
+    if (t_src > t_dst) {
+        return copy_with_mtime_preserve(src, dst);
+    }
+    return true; // equal or dst newer => no action needed
+}
 }
 
 std::vector<std::string> read_param_list(const std::string& paramFile) {
@@ -59,27 +79,12 @@ ActionResult execute_backup(const std::string& hdPath,
                 fs::path src = fs::path(hdPath) / name;
                 fs::path dst = fs::path(penPath) / name;
 
-                if (!fs::exists(src)) {
-                    // Missing on HD: skip for now (will be handled to accumulate later)
+                if (is_dir_or_missing(src)) {
+                    // skip missing or directory entries (no recursive copy)
                     continue;
                 }
 
-                // Skip directory entries (no implicit recursion)
-                if (fs::is_directory(src)) {
-                    continue;
-                }
-
-                if (!fs::exists(dst)) {
-                    fs::create_directories(dst.parent_path());
-                    (void)copy_with_mtime_preserve(src, dst);
-                } else {
-                    // Update pen if HD is newer
-                    auto t_src = fs::last_write_time(src);
-                    auto t_dst = fs::last_write_time(dst);
-                    if (t_src > t_dst) {
-                        (void)copy_with_mtime_preserve(src, dst);
-                    }
-                }
+                (void)backup_copy_or_update(src, dst);
             }
         } else if (op == Operation::Restore) {
             // Minimal restore: when file exists only on Pen, copy to HD
