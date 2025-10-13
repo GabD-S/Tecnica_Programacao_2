@@ -283,3 +283,35 @@ TEST_CASE("restore: ignore directory entries in parameter file") {
     REQUIRE_FALSE(fs::exists(tmp / "hd" / "DIR" / "inside.txt"));
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: equal timestamps -> no action") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_restore_case10";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    auto penFile = tmp / "pen" / "EQ.txt";
+    auto hdFile = tmp / "hd" / "EQ.txt";
+
+    // Different contents
+    std::ofstream(hdFile) << "old";
+    std::ofstream(penFile) << "new";
+
+    // Set the same timestamp on both
+    auto t = fs::file_time_type::clock::now();
+    fs::last_write_time(hdFile, t);
+    fs::last_write_time(penFile, t);
+
+    std::ofstream(tmp / "Backup.parm") << "EQ.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+
+    // Expect success and no change to HD content
+    REQUIRE(r.code == 0);
+    std::string got;
+    std::ifstream in(hdFile); std::getline(in, got);
+    REQUIRE(got == "old");
+
+    fs::remove_all(tmp);
+}
