@@ -53,7 +53,8 @@ ActionResult execute_backup(const std::string& hdPath,
                 fs::path dst = fs::path(hdPath) / name;
 
                 if (!fs::exists(src)) {
-                    continue; // in fuller implementation, could be an error
+                    // Listed file missing on pen: treat as error
+                    return {4, "source file missing on pen"};
                 }
 
                 if (!fs::exists(dst)) {

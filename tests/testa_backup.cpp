@@ -105,3 +105,20 @@ TEST_CASE("restore: pen file newer than HD -> update HD") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: listed file missing on Pen -> error") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_restore_case3";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // File is listed but does not exist on pen
+    std::ofstream(tmp / "Backup.parm") << "R3.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+
+    REQUIRE(r.code != 0);
+
+    fs::remove_all(tmp);
+}
