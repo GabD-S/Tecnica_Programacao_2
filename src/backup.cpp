@@ -21,6 +21,20 @@ bool copy_with_mtime_preserve(const std::filesystem::path& src, const std::files
     fs::last_write_time(dst, t_src);
     return true;
 }
+
+bool backup_copy_or_update(const std::filesystem::path& src, const std::filesystem::path& dst) {
+    namespace fs = std::filesystem;
+    if (!fs::exists(dst)) {
+        fs::create_directories(dst.parent_path());
+        return copy_with_mtime_preserve(src, dst);
+    }
+    auto t_src = fs::last_write_time(src);
+    auto t_dst = fs::last_write_time(dst);
+    if (t_src > t_dst) {
+        return copy_with_mtime_preserve(src, dst);
+    }
+    return true; // equal or dst newer => no action needed
+}
 }
 
 std::vector<std::string> read_param_list(const std::string& paramFile) {
@@ -55,22 +69,26 @@ ActionResult execute_backup(const std::string& hdPath,
 
     try {
         if (op == Operation::Backup) {
+            bool any_missing = false;
+            bool any_write_error = false;
             for (const auto& name : list) {
                 fs::path src = fs::path(hdPath) / name;
                 fs::path dst = fs::path(penPath) / name;
 
                 if (!fs::exists(src)) {
-                    // In full implementation this might be an error per table decision; keep going for now.
-                    continue;
+                    any_missing = true;
+                    continue; // keep processing other entries
+                }
+                if (fs::is_directory(src)) {
+                    continue; // ignore directories (no recursion)
                 }
 
-                if (!fs::exists(dst)) {
-                    fs::create_directories(dst.parent_path());
-                    std::ifstream in(src, std::ios::binary);
-                    std::ofstream out(dst, std::ios::binary);
-                    out << in.rdbuf();
+                if (!backup_copy_or_update(src, dst)) {
+                    any_write_error = true;
                 }
             }
+            if (any_write_error) return {5, "failed to write to pen"};
+            if (any_missing) return {4, "one or more source files missing on hd"};
         } else if (op == Operation::Restore) {
             // Minimal restore: when file exists only on Pen, copy to HD
             bool any_missing = false;

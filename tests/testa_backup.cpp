@@ -426,3 +426,153 @@ TEST_CASE("restore: error precedence (write error over missing)") {
     fs::permissions(hd_lock, fs::perms::owner_all, fs::perm_options::add);
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: mixed scenario (hd-only, hd-newer, equal, missing, pen-newer, nested)") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_backup_mixed";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    auto now = fs::file_time_type::clock::now();
+
+    // hd-only: H_ONLY.txt on HD
+    std::ofstream(tmp / "hd" / "H_ONLY.txt") << "only";
+
+    // hd-newer: NEW_B.txt exists in both, HD newer
+    auto hd_new = tmp / "hd" / "NEW_B.txt";
+    auto pen_new = tmp / "pen" / "NEW_B.txt";
+    std::ofstream(hd_new) << "hd_new";
+    std::ofstream(pen_new) << "pen_old";
+    fs::last_write_time(hd_new, now);
+    fs::last_write_time(pen_new, now - 2s);
+
+    // equal timestamps: EQ_B.txt
+    auto hd_eq = tmp / "hd" / "EQ_B.txt";
+    auto pen_eq = tmp / "pen" / "EQ_B.txt";
+    std::ofstream(hd_eq) << "old";
+    std::ofstream(pen_eq) << "pen_eq";
+    auto t_eq = now - 5s;
+    fs::last_write_time(hd_eq, t_eq);
+    fs::last_write_time(pen_eq, t_eq);
+
+    // missing on HD: MISS_B.txt (listed but absent on HD)
+
+    // pen newer than HD: PEN_NEWER.txt (should no-op in backup)
+    auto hd_pn = tmp / "hd" / "PEN_NEWER.txt";
+    auto pen_pn = tmp / "pen" / "PEN_NEWER.txt";
+    std::ofstream(hd_pn) << "old";
+    std::ofstream(pen_pn) << "new";
+    fs::last_write_time(hd_pn, now - 2s);
+    fs::last_write_time(pen_pn, now);
+
+    // nested path: DIRB/sub/file.txt (HD only)
+    fs::create_directories(tmp / "hd" / "DIRB" / "sub");
+    std::ofstream(tmp / "hd" / "DIRB" / "sub" / "file.txt") << "nested_b";
+
+    // Build parameter list
+    std::ofstream parm(tmp / "Backup.parm");
+    parm << "H_ONLY.txt\n";
+    parm << "NEW_B.txt\n";
+    parm << "EQ_B.txt\n";
+    parm << "MISS_B.txt\n";
+    parm << "PEN_NEWER.txt\n";
+    parm << "DIRB/sub/file.txt\n";
+    parm.close();
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+
+    // Expectations:
+    // hd-only copied
+    REQUIRE(fs::exists(tmp / "pen" / "H_ONLY.txt"));
+    // hd-newer updated
+    std::string new_content; { std::ifstream in(pen_new); std::getline(in, new_content);} 
+    REQUIRE(new_content.find("hd_new") != std::string::npos);
+    // equal unchanged (Pen keeps pen_eq)
+    std::string eq_content; { std::ifstream in(pen_eq); std::getline(in, eq_content);} 
+    REQUIRE(eq_content == "pen_eq");
+    // missing on HD not created and should mark non-zero (we'll accept either behavior now, but prefer non-zero once implemented)
+    // pen newer than HD no-op
+    std::string pn_content; { std::ifstream in(pen_pn); std::getline(in, pn_content);} 
+    REQUIRE(pn_content == "new");
+    // nested created and copied
+    std::string nested_content; { std::ifstream in(tmp / "pen" / "DIRB" / "sub" / "file.txt"); std::getline(in, nested_content);} 
+    REQUIRE(nested_content == "nested_b");
+
+    fs::remove_all(tmp);
+}
+
+TEST_CASE("backup: continue after missing on HD but return error") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_backup_acc_missing";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // One existing on HD, one missing
+    std::ofstream(tmp / "hd" / "A_b.txt") << "available";
+    std::ofstream(tmp / "Backup.parm") << "B_miss.txt\nA_b.txt\n"; // first missing, then available
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+
+    // RED: Expect non-zero due to missing B_miss.txt, but A_b.txt should be copied to Pen
+    REQUIRE(r.code != 0);
+    REQUIRE(fs::exists(tmp / "pen" / "A_b.txt"));
+    REQUIRE_FALSE(fs::exists(tmp / "pen" / "B_miss.txt"));
+
+    fs::remove_all(tmp);
+}
+
+TEST_CASE("backup: error when writing to Pen returns 5 and continues") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_backup_write_error";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Unwritable file on Pen: force update by making HD newer
+    auto hd_lock = tmp / "hd" / "LOCKB.txt";
+    auto pen_lock = tmp / "pen" / "LOCKB.txt";
+    std::ofstream(hd_lock) << "new_content";
+    std::ofstream(pen_lock) << "old_content";
+    auto now = fs::file_time_type::clock::now();
+    fs::last_write_time(pen_lock, now - 2s);
+    fs::last_write_time(hd_lock, now);
+    fs::permissions(pen_lock, fs::perms::owner_read, fs::perm_options::replace);
+
+    // A second file that should still be copied successfully
+    std::ofstream(tmp / "hd" / "OK.txt") << "ok";
+
+    std::ofstream(tmp / "Backup.parm") << "LOCKB.txt\nOK.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+
+    REQUIRE(r.code == 5);
+    // Ensure the second file was processed
+    REQUIRE(fs::exists(tmp / "pen" / "OK.txt"));
+    // The unwritable file should remain unchanged
+    std::string lock_content; { std::ifstream in(pen_lock); std::getline(in, lock_content);} 
+    REQUIRE(lock_content == "old_content");
+
+    // Cleanup permissions
+    fs::permissions(pen_lock, fs::perms::owner_all, fs::perm_options::add);
+    fs::remove_all(tmp);
+}
+
+TEST_CASE("backup: returns code 4 when listed file is missing on HD") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_backup_code4";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Only missing entry, to avoid write errors and isolate code 4 behavior
+    std::ofstream(tmp / "Backup.parm") << "ONLY_MISSING.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    REQUIRE(r.code == 4);
+
+    fs::remove_all(tmp);
+}
