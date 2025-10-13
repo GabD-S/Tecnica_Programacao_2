@@ -395,3 +395,34 @@ TEST_CASE("restore: mixed scenario (pen-only, pen-newer, equal, missing, unwrita
     fs::permissions(hd_lock, fs::perms::owner_all, fs::perm_options::add);
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: error precedence (write error over missing)") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_restore_err_prec";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Missing entry
+    // Also create a pair that will cause a write error: pen newer, HD read-only
+    auto hd_lock = tmp / "hd" / "LOCKE.txt";
+    auto pen_lock = tmp / "pen" / "LOCKE.txt";
+    std::ofstream(hd_lock) << "old";
+    std::ofstream(pen_lock) << "new";
+    auto now = fs::file_time_type::clock::now();
+    fs::last_write_time(hd_lock, now - 2s);
+    fs::last_write_time(pen_lock, now);
+    fs::permissions(hd_lock, fs::perms::owner_read, fs::perm_options::replace);
+
+    std::ofstream(tmp / "Backup.parm") << "MISSING_X.txt\nLOCKE.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+
+    // Expect write error (5) to dominate over missing (4)
+    REQUIRE(r.code == 5);
+
+    // cleanup permissions
+    fs::permissions(hd_lock, fs::perms::owner_all, fs::perm_options::add);
+    fs::remove_all(tmp);
+}
