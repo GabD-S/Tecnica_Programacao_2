@@ -176,3 +176,34 @@ TEST_CASE("restore: ignore comment lines in parameter file") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: preserve timestamps from pen to HD") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_restore_case6";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Create pen file and set a known timestamp
+    auto penFile = tmp / "pen" / "R6.txt";
+    std::ofstream(penFile) << "ts-sync";
+    auto t_ref = fs::file_time_type::clock::now();
+    // ensure a small delay then set mtime to t_ref
+    std::this_thread::sleep_for(10ms);
+    fs::last_write_time(penFile, t_ref);
+
+    std::ofstream(tmp / "Backup.parm") << "R6.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+    REQUIRE(r.code == 0);
+
+    auto hdFile = tmp / "hd" / "R6.txt";
+    REQUIRE(fs::exists(hdFile));
+    auto t_hd = fs::last_write_time(hdFile);
+    auto t_pen = fs::last_write_time(penFile);
+    // Expect exact match
+    REQUIRE(t_hd == t_pen);
+
+    fs::remove_all(tmp);
+}
