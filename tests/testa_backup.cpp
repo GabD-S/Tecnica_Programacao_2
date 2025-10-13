@@ -122,3 +122,30 @@ TEST_CASE("restore: listed file missing on Pen -> error") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: trim spaces in parameter entries") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_restore_case4";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Create file on pen with exact clean name
+    std::ofstream(tmp / "pen" / "R4.txt") << "trim-me";
+
+    // Parameter file with leading/trailing spaces and blank lines
+    std::ofstream parm(tmp / "Backup.parm");
+    parm << "   R4.txt   \n";
+    parm << "\n"; // extra blank line
+    parm.close();
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+
+    REQUIRE(r.code == 0);
+    REQUIRE(fs::exists(tmp / "hd" / "R4.txt"));
+    std::ifstream in(tmp / "hd" / "R4.txt");
+    std::string got; std::getline(in, got);
+    REQUIRE(got == "trim-me");
+
+    fs::remove_all(tmp);
+}
