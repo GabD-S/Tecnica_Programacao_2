@@ -229,3 +229,32 @@ TEST_CASE("restore: continue after first missing but return error") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: error when HD destination is not writable") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_restore_case8";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Prepare source on pen
+    std::ofstream(tmp / "pen" / "LOCK.txt") << "locked";
+    std::ofstream(tmp / "Backup.parm") << "LOCK.txt\n";
+
+    // Create destination file and make it read-only (no write permission)
+    auto dst = tmp / "hd" / "LOCK.txt";
+    std::ofstream(dst) << "old";
+    fs::permissions(dst, fs::perms::owner_read, fs::perm_options::replace);
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+
+    // RED: Expect non-zero due to write failure and content unchanged
+    REQUIRE(r.code != 0);
+    std::ifstream in(dst);
+    std::string got; std::getline(in, got);
+    REQUIRE(got == "old");
+
+    // cleanup: restore permissions to delete
+    fs::permissions(dst, fs::perms::owner_all, fs::perm_options::add);
+    fs::remove_all(tmp);
+}
