@@ -5,13 +5,38 @@
 
 namespace tp2 {
 
+namespace {
+// Copy file contents from src to dst, return true on success; preserves src mtime on dst.
+bool copy_with_mtime_preserve(const std::filesystem::path& src, const std::filesystem::path& dst) {
+    namespace fs = std::filesystem;
+    std::ifstream in(src, std::ios::binary);
+    if (!in) return false;
+    std::ofstream out(dst, std::ios::binary);
+    if (!out) return false;
+    out << in.rdbuf();
+    if (!out.good()) { out.close(); return false; }
+    out.flush();
+    out.close();
+    auto t_src = fs::last_write_time(src);
+    fs::last_write_time(dst, t_src);
+    return true;
+}
+}
+
 std::vector<std::string> read_param_list(const std::string& paramFile) {
     std::vector<std::string> items;
     std::ifstream in(paramFile);
     if (!in.is_open()) return items; // empty => caller can treat as impossible
     std::string line;
     while (std::getline(in, line)) {
-        if (!line.empty()) items.push_back(line);
+        // trim leading/trailing whitespace
+        auto begin = line.find_first_not_of(" \t\r\n");
+        auto end = line.find_last_not_of(" \t\r\n");
+    if (begin == std::string::npos) continue; // blank line
+    std::string trimmed = line.substr(begin, end - begin + 1);
+    // Skip comment lines that start with '#' or ';'
+    if (!trimmed.empty() && (trimmed[0] == '#' || trimmed[0] == ';')) continue;
+    if (!trimmed.empty()) items.push_back(trimmed);
     }
     return items;
 }
@@ -48,31 +73,32 @@ ActionResult execute_backup(const std::string& hdPath,
             }
         } else if (op == Operation::Restore) {
             // Minimal restore: when file exists only on Pen, copy to HD
+            bool any_missing = false;
+            bool any_write_error = false;
             for (const auto& name : list) {
                 fs::path src = fs::path(penPath) / name;
                 fs::path dst = fs::path(hdPath) / name;
 
                 if (!fs::exists(src)) {
-                    // Listed file missing on pen: treat as error
-                    return {4, "source file missing on pen"};
+                    // Listed file missing on pen: mark error but keep going
+                    any_missing = true;
+                    continue;
                 }
 
                 if (!fs::exists(dst)) {
                     fs::create_directories(dst.parent_path());
-                    std::ifstream in(src, std::ios::binary);
-                    std::ofstream out(dst, std::ios::binary);
-                    out << in.rdbuf();
+                    if (!copy_with_mtime_preserve(src, dst)) { any_write_error = true; continue; }
                 } else {
                     // Both exist: update HD if pen is newer
                     auto t_src = fs::last_write_time(src);
                     auto t_dst = fs::last_write_time(dst);
                     if (t_src > t_dst) {
-                        std::ifstream in(src, std::ios::binary);
-                        std::ofstream out(dst, std::ios::binary);
-                        out << in.rdbuf();
+                        if (!copy_with_mtime_preserve(src, dst)) { any_write_error = true; continue; }
                     }
                 }
             }
+            if (any_write_error) return {5, "failed to write to HD"};
+            if (any_missing) return {4, "one or more source files missing on pen"};
         } else {
             return {2, "operation not supported in minimal implementation"};
         }
