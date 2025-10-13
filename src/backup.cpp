@@ -60,15 +60,25 @@ ActionResult execute_backup(const std::string& hdPath,
                 fs::path dst = fs::path(penPath) / name;
 
                 if (!fs::exists(src)) {
-                    // In full implementation this might be an error per table decision; keep going for now.
+                    // Missing on HD: skip for now (will be handled to accumulate later)
+                    continue;
+                }
+
+                // Skip directory entries (no implicit recursion)
+                if (fs::is_directory(src)) {
                     continue;
                 }
 
                 if (!fs::exists(dst)) {
                     fs::create_directories(dst.parent_path());
-                    std::ifstream in(src, std::ios::binary);
-                    std::ofstream out(dst, std::ios::binary);
-                    out << in.rdbuf();
+                    (void)copy_with_mtime_preserve(src, dst);
+                } else {
+                    // Update pen if HD is newer
+                    auto t_src = fs::last_write_time(src);
+                    auto t_dst = fs::last_write_time(dst);
+                    if (t_src > t_dst) {
+                        (void)copy_with_mtime_preserve(src, dst);
+                    }
                 }
             }
         } else if (op == Operation::Restore) {
