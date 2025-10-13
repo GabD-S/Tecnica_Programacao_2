@@ -55,13 +55,15 @@ ActionResult execute_backup(const std::string& hdPath,
             }
         } else if (op == Operation::Restore) {
             // Minimal restore: when file exists only on Pen, copy to HD
+            bool any_missing = false;
             for (const auto& name : list) {
                 fs::path src = fs::path(penPath) / name;
                 fs::path dst = fs::path(hdPath) / name;
 
                 if (!fs::exists(src)) {
-                    // Listed file missing on pen: treat as error
-                    return {4, "source file missing on pen"};
+                    // Listed file missing on pen: mark error but keep going
+                    any_missing = true;
+                    continue;
                 }
 
                 if (!fs::exists(dst)) {
@@ -89,6 +91,7 @@ ActionResult execute_backup(const std::string& hdPath,
                     }
                 }
             }
+            if (any_missing) return {4, "one or more source files missing on pen"};
         } else {
             return {2, "operation not supported in minimal implementation"};
         }
