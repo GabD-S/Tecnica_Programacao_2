@@ -28,27 +28,52 @@ ActionResult execute_backup(const std::string& hdPath,
         return {1, "param file missing or empty"};
     }
 
-    // For GREEN: implement only the case Operation::Backup and when file exists on HD but not on Pen => copy.
-    if (op != Operation::Backup) {
-        return {2, "operation not supported in minimal implementation"};
-    }
-
     try {
-        for (const auto& name : list) {
-            fs::path src = fs::path(hdPath) / name;
-            fs::path dst = fs::path(penPath) / name;
+        if (op == Operation::Backup) {
+            for (const auto& name : list) {
+                fs::path src = fs::path(hdPath) / name;
+                fs::path dst = fs::path(penPath) / name;
 
-            if (!fs::exists(src)) {
-                // In full implementation this might be an error per table decision; keep going for now.
-                continue;
-            }
+                if (!fs::exists(src)) {
+                    // In full implementation this might be an error per table decision; keep going for now.
+                    continue;
+                }
 
-            if (!fs::exists(dst)) {
-                fs::create_directories(dst.parent_path());
-                std::ifstream in(src, std::ios::binary);
-                std::ofstream out(dst, std::ios::binary);
-                out << in.rdbuf();
+                if (!fs::exists(dst)) {
+                    fs::create_directories(dst.parent_path());
+                    std::ifstream in(src, std::ios::binary);
+                    std::ofstream out(dst, std::ios::binary);
+                    out << in.rdbuf();
+                }
             }
+        } else if (op == Operation::Restore) {
+            // Minimal restore: when file exists only on Pen, copy to HD
+            for (const auto& name : list) {
+                fs::path src = fs::path(penPath) / name;
+                fs::path dst = fs::path(hdPath) / name;
+
+                if (!fs::exists(src)) {
+                    continue; // in fuller implementation, could be an error
+                }
+
+                if (!fs::exists(dst)) {
+                    fs::create_directories(dst.parent_path());
+                    std::ifstream in(src, std::ios::binary);
+                    std::ofstream out(dst, std::ios::binary);
+                    out << in.rdbuf();
+                } else {
+                    // Both exist: update HD if pen is newer
+                    auto t_src = fs::last_write_time(src);
+                    auto t_dst = fs::last_write_time(dst);
+                    if (t_src > t_dst) {
+                        std::ifstream in(src, std::ios::binary);
+                        std::ofstream out(dst, std::ios::binary);
+                        out << in.rdbuf();
+                    }
+                }
+            }
+        } else {
+            return {2, "operation not supported in minimal implementation"};
         }
     } catch (const std::exception& e) {
         return {3, std::string("exception: ") + e.what()};
