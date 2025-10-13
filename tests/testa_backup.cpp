@@ -523,3 +523,40 @@ TEST_CASE("backup: continue after missing on HD but return error") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: error when writing to Pen returns 5 and continues") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_backup_write_error";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Unwritable file on Pen: force update by making HD newer
+    auto hd_lock = tmp / "hd" / "LOCKB.txt";
+    auto pen_lock = tmp / "pen" / "LOCKB.txt";
+    std::ofstream(hd_lock) << "new_content";
+    std::ofstream(pen_lock) << "old_content";
+    auto now = fs::file_time_type::clock::now();
+    fs::last_write_time(pen_lock, now - 2s);
+    fs::last_write_time(hd_lock, now);
+    fs::permissions(pen_lock, fs::perms::owner_read, fs::perm_options::replace);
+
+    // A second file that should still be copied successfully
+    std::ofstream(tmp / "hd" / "OK.txt") << "ok";
+
+    std::ofstream(tmp / "Backup.parm") << "LOCKB.txt\nOK.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+
+    REQUIRE(r.code == 5);
+    // Ensure the second file was processed
+    REQUIRE(fs::exists(tmp / "pen" / "OK.txt"));
+    // The unwritable file should remain unchanged
+    std::string lock_content; { std::ifstream in(pen_lock); std::getline(in, lock_content);} 
+    REQUIRE(lock_content == "old_content");
+
+    // Cleanup permissions
+    fs::permissions(pen_lock, fs::perms::owner_all, fs::perm_options::add);
+    fs::remove_all(tmp);
+}
