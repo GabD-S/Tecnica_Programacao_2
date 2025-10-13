@@ -560,3 +560,19 @@ TEST_CASE("backup: error when writing to Pen returns 5 and continues") {
     fs::permissions(pen_lock, fs::perms::owner_all, fs::perm_options::add);
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: returns code 4 when listed file is missing on HD") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_backup_code4";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Only missing entry, to avoid write errors and isolate code 4 behavior
+    std::ofstream(tmp / "Backup.parm") << "ONLY_MISSING.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+    REQUIRE(r.code == 4);
+
+    fs::remove_all(tmp);
+}
