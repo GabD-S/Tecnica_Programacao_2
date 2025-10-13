@@ -207,3 +207,25 @@ TEST_CASE("restore: preserve timestamps from pen to HD") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: continue after first missing but return error") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_restore_case7";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Prepare: first missing, second exists
+    std::ofstream(tmp / "pen" / "B.txt") << "available";
+    std::ofstream(tmp / "Backup.parm") << "A.txt\nB.txt\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+
+    // RED expectation: should copy B.txt to HD, but return non-zero due to missing A.txt
+    REQUIRE(r.code != 0);
+    REQUIRE(fs::exists(tmp / "hd" / "B.txt"));
+    REQUIRE_FALSE(fs::exists(tmp / "hd" / "A.txt"));
+
+    fs::remove_all(tmp);
+}
