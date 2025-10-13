@@ -69,6 +69,11 @@ ActionResult execute_backup(const std::string& hdPath,
                     std::ifstream in(src, std::ios::binary);
                     std::ofstream out(dst, std::ios::binary);
                     out << in.rdbuf();
+                    out.flush();
+                    out.close();
+                    // preserve timestamp from pen to HD (set after closing stream)
+                    auto t_src = fs::last_write_time(src);
+                    fs::last_write_time(dst, t_src);
                 } else {
                     // Both exist: update HD if pen is newer
                     auto t_src = fs::last_write_time(src);
@@ -77,6 +82,10 @@ ActionResult execute_backup(const std::string& hdPath,
                         std::ifstream in(src, std::ios::binary);
                         std::ofstream out(dst, std::ios::binary);
                         out << in.rdbuf();
+                        out.flush();
+                        out.close();
+                        // keep destination timestamp in sync with source (set after closing stream)
+                        fs::last_write_time(dst, t_src);
                     }
                 }
             }
