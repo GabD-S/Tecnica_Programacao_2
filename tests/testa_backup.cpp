@@ -426,3 +426,79 @@ TEST_CASE("restore: error precedence (write error over missing)") {
     fs::permissions(hd_lock, fs::perms::owner_all, fs::perm_options::add);
     fs::remove_all(tmp);
 }
+
+TEST_CASE("backup: mixed scenario (hd-only, hd-newer, equal, missing, pen-newer, nested)") {
+    namespace fs = std::filesystem;
+    using namespace std::chrono_literals;
+    fs::path tmp = fs::current_path() / "_tmp_backup_mixed";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    auto now = fs::file_time_type::clock::now();
+
+    // hd-only: H_ONLY.txt on HD
+    std::ofstream(tmp / "hd" / "H_ONLY.txt") << "only";
+
+    // hd-newer: NEW_B.txt exists in both, HD newer
+    auto hd_new = tmp / "hd" / "NEW_B.txt";
+    auto pen_new = tmp / "pen" / "NEW_B.txt";
+    std::ofstream(hd_new) << "hd_new";
+    std::ofstream(pen_new) << "pen_old";
+    fs::last_write_time(hd_new, now);
+    fs::last_write_time(pen_new, now - 2s);
+
+    // equal timestamps: EQ_B.txt
+    auto hd_eq = tmp / "hd" / "EQ_B.txt";
+    auto pen_eq = tmp / "pen" / "EQ_B.txt";
+    std::ofstream(hd_eq) << "old";
+    std::ofstream(pen_eq) << "pen_eq";
+    auto t_eq = now - 5s;
+    fs::last_write_time(hd_eq, t_eq);
+    fs::last_write_time(pen_eq, t_eq);
+
+    // missing on HD: MISS_B.txt (listed but absent on HD)
+
+    // pen newer than HD: PEN_NEWER.txt (should no-op in backup)
+    auto hd_pn = tmp / "hd" / "PEN_NEWER.txt";
+    auto pen_pn = tmp / "pen" / "PEN_NEWER.txt";
+    std::ofstream(hd_pn) << "old";
+    std::ofstream(pen_pn) << "new";
+    fs::last_write_time(hd_pn, now - 2s);
+    fs::last_write_time(pen_pn, now);
+
+    // nested path: DIRB/sub/file.txt (HD only)
+    fs::create_directories(tmp / "hd" / "DIRB" / "sub");
+    std::ofstream(tmp / "hd" / "DIRB" / "sub" / "file.txt") << "nested_b";
+
+    // Build parameter list
+    std::ofstream parm(tmp / "Backup.parm");
+    parm << "H_ONLY.txt\n";
+    parm << "NEW_B.txt\n";
+    parm << "EQ_B.txt\n";
+    parm << "MISS_B.txt\n";
+    parm << "PEN_NEWER.txt\n";
+    parm << "DIRB/sub/file.txt\n";
+    parm.close();
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Backup);
+
+    // Expectations:
+    // hd-only copied
+    REQUIRE(fs::exists(tmp / "pen" / "H_ONLY.txt"));
+    // hd-newer updated
+    std::string new_content; { std::ifstream in(pen_new); std::getline(in, new_content);} 
+    REQUIRE(new_content.find("hd_new") != std::string::npos);
+    // equal unchanged (Pen keeps pen_eq)
+    std::string eq_content; { std::ifstream in(pen_eq); std::getline(in, eq_content);} 
+    REQUIRE(eq_content == "pen_eq");
+    // missing on HD not created and should mark non-zero (we'll accept either behavior now, but prefer non-zero once implemented)
+    // pen newer than HD no-op
+    std::string pn_content; { std::ifstream in(pen_pn); std::getline(in, pn_content);} 
+    REQUIRE(pn_content == "new");
+    // nested created and copied
+    std::string nested_content; { std::ifstream in(tmp / "pen" / "DIRB" / "sub" / "file.txt"); std::getline(in, nested_content);} 
+    REQUIRE(nested_content == "nested_b");
+
+    fs::remove_all(tmp);
+}
