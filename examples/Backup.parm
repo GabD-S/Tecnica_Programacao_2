@@ -1,0 +1,8 @@
+# Exemplo de arquivo Backup.parm
+; linhas iniciadas com ; também são comentários
+
+Documentos/relatorio.pdf
+Fotos/viagem.jpg
+
+# linhas em branco são ignoradas
+Scripts/backup.sh
