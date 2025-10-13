@@ -263,3 +263,23 @@ TEST_CASE("restore: error when HD destination is not writable") {
     fs::permissions(dst, fs::perms::owner_all, fs::perm_options::add);
     fs::remove_all(tmp);
 }
+
+TEST_CASE("restore: ignore directory entries in parameter file") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::current_path() / "_tmp_restore_case9";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen" / "DIR");
+
+    // Put a file inside the directory
+    std::ofstream(tmp / "pen" / "DIR" / "inside.txt") << "inside";
+
+    // Parameter lists the directory name, not the file
+    std::ofstream(tmp / "Backup.parm") << "DIR\n";
+
+    auto r = execute_backup((tmp / "hd").string(), (tmp / "pen").string(), (tmp / "Backup.parm").string(), Operation::Restore);
+
+    // RED expectation: either success or a defined error, but must NOT copy contents of the directory implicitly
+    REQUIRE_FALSE(fs::exists(tmp / "hd" / "DIR" / "inside.txt"));
+    fs::remove_all(tmp);
+}
