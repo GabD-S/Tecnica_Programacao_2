@@ -30,7 +30,7 @@ TEST_BIN := $(BIN_DIR)/tests
 
 # External single-header Catch2 expected at repo root as catch.hpp
 
-.PHONY: all test lint static memcheck coverage doc clean debug run
+.PHONY: all test lint static memcheck coverage doc clean debug run app
 
 all: $(TEST_BIN)
 
@@ -56,6 +56,7 @@ $(APP_BIN): | $(BIN_DIR)
 else
 $(APP_BIN): $(CORE_OBJS) $(SRC_DIR)/main.cpp | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $(CORE_OBJS) $(SRC_DIR)/main.cpp -o $(APP_BIN) $(LDFLAGS)
+	@chmod +x $(APP_BIN)
 endif
 
 test: $(TEST_BIN) $(APP_BIN)
@@ -64,13 +65,21 @@ test: $(TEST_BIN) $(APP_BIN)
 run: $(APP_BIN)
 	$(APP_BIN)
 
+# Convenience target to build the CLI app explicitly
+app: $(APP_BIN)
+
 lint:
 	@echo "Running cpplint..."
 	# Quote paths to handle spaces and use find to expand files robustly
-	@python3 cpplint.py --filter=-build/include_subdir --extensions=hpp,cpp \
-		`find "$(SRC_DIR)" -maxdepth 1 -name '*.cpp' -print` \
-		`find "$(INC_DIR)" -maxdepth 1 -name '*.hpp' -print` \
-		`find "$(TEST_DIR)" -maxdepth 1 -name '*.cpp' -print` || true
+	@set -e; \
+	if command -v cpplint >/dev/null 2>&1; then LINT_CMD=cpplint; else LINT_CMD="python3 cpplint.py"; fi; \
+	FILES="`find "$(SRC_DIR)" -maxdepth 1 -name '*.cpp' -print; \
+			 find "$(INC_DIR)" -maxdepth 1 -name '*.hpp' -print; \
+			 find "$(TEST_DIR)" -maxdepth 1 -name '*.cpp' -print`"; \
+	for f in $$FILES; do \
+		echo "cpplint: $$f"; \
+		LC_ALL=C.UTF-8 $$LINT_CMD --filter=-build/include_subdir --extensions=hpp,cpp "$$f" || true; \
+	done
 
 static:
 	@echo "Running cppcheck..."
@@ -85,7 +94,7 @@ memcheck: $(TEST_BIN)
 
 coverage: CXXFLAGS += -g -O0 $(COVERAGE_FLAGS)
 coverage: LDFLAGS += -lgcov
-coverage: clean $(TEST_BIN)
+coverage: clean $(TEST_BIN) $(APP_BIN)
 	@echo "Running tests with coverage..."
 	$(TEST_BIN)
 	@echo "Capturing lcov data..."
