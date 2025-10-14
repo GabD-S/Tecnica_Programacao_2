@@ -67,7 +67,7 @@ run: $(APP_BIN)
 lint:
 	@echo "Running cpplint..."
 	# Quote paths to handle spaces and use find to expand files robustly
-	@python3 cpplint.py --filter=-build/include_subdir --exclude=catch.hpp \
+	@python3 cpplint.py --filter=-build/include_subdir --extensions=hpp,cpp \
 		`find "$(SRC_DIR)" -maxdepth 1 -name '*.cpp' -print` \
 		`find "$(INC_DIR)" -maxdepth 1 -name '*.hpp' -print` \
 		`find "$(TEST_DIR)" -maxdepth 1 -name '*.cpp' -print` || true
