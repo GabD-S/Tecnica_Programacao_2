@@ -56,6 +56,18 @@ int main(int argc, char** argv) {
         return 2; // per spec, op not supported
     }
 
+    // Validate required paths before delegating
+    if (hd.empty()) {
+        std::cerr << "Missing required --hd" << std::endl;
+        print_usage();
+        return 1;
+    }
+    if (pen.empty()) {
+        std::cerr << "Missing required --pen" << std::endl;
+        print_usage();
+        return 1;
+    }
+
     ActionResult res = execute_backup(hd, pen, parm, op);
     if (!res.message.empty()) {
         std::cerr << res.message << std::endl;
