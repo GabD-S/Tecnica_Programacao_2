@@ -18,6 +18,7 @@ enum class Operation { Backup, ///< Copia/atualiza de HD para PEN
  *  - 4: entradas ausentes na fonte (missing)
  *  - 5: falha de escrita (tem precedência sobre 4)
  */
+
 struct ActionResult {
     int code;              ///< 0 sucesso; >0 conforme tabela acima
     std::string message;   ///< mensagem opcional de detalhe
