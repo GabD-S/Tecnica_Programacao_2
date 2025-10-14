@@ -2,6 +2,17 @@ TP2 — Sistema de Backup
 
 Este projeto implementa um sistema de Backup/Restore com interface de linha de comando (CLI) e testes automatizados (Catch2).
 
+Guia rápido (como rodar)
+- Pré‑requisitos no Linux: make, g++ (C++17), Python 3, cppcheck, valgrind, lcov/genhtml, doxygen (opcional)
+- Clonar e entrar no diretório do projeto.
+- Rodar testes (compila e executa):
+	- make test
+- Executar a aplicação CLI:
+	- make run
+	- ou: ./bin/tp2_cli --mode backup --hd "/caminho/HD" --pen "/caminho/PEN" --parm "/caminho/Backup.parm"
+- Gerar cobertura:
+	- make coverage (relatório em build/coverage_html/index.html)
+
 Requisitos
 - Linux com make e g++ (C++17)
 - Python 3 (para executar cpplint.py)
@@ -29,6 +40,11 @@ Como compilar e testar
 	make run
 	# ou diretamente
 	./bin/tp2_cli --mode backup --hd "/caminho/HD" --pen "/caminho/PEN" --parm "/caminho/Backup.parm"
+
+Resolução de problemas
+- Espaços em caminhos: sempre use aspas em --hd, --pen e --parm.
+- cpplint barulhento: o alvo make lint usa um cpplint embarcado; é seguro ignorar warnings do Python. Em CI, prefira instalar cpplint via pip.
+- Permissões no pendrive: se ocorrer código 5 (falha de escrita), verifique permissões e disponibilidade do destino.
 
 Uso do CLI
 Binário: ./bin/tp2_cli
