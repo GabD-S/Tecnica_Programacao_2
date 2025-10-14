@@ -4,6 +4,11 @@
 #include <string>
 #include <cstdlib>
 #include <unistd.h>
+static void require_cli_present() {
+    if (!std::filesystem::exists("./bin/tp2_cli")) {
+        FAIL("CLI binary ./bin/tp2_cli not found. Build may have failed.");
+    }
+}
 
 namespace fs = std::filesystem;
 
@@ -15,6 +20,7 @@ static int exit_status_from_system(int rc) {
 }
 
 TEST_CASE("cli: smoke test for backup mode") {
+    require_cli_present();
     // Arrange a temporary workspace
     fs::path tmp = fs::temp_directory_path() / ("tp2_cli_smoke_" + std::to_string(::getpid()));
     fs::remove_all(tmp);
@@ -52,6 +58,7 @@ TEST_CASE("cli: smoke test for backup mode") {
 }
 
 TEST_CASE("cli: smoke test for restore mode") {
+    require_cli_present();
     namespace fs = std::filesystem;
     fs::path tmp = fs::temp_directory_path() / ("tp2_cli_restore_" + std::to_string(::getpid()));
     fs::remove_all(tmp);
@@ -79,6 +86,7 @@ TEST_CASE("cli: smoke test for restore mode") {
 }
 
 TEST_CASE("cli: error when --hd is missing") {
+    require_cli_present();
     namespace fs = std::filesystem;
     fs::path tmp = fs::temp_directory_path() / ("tp2_cli_err_hd_" + std::to_string(::getpid()));
     fs::remove_all(tmp);
@@ -105,6 +113,7 @@ TEST_CASE("cli: error when --hd is missing") {
 }
 
 TEST_CASE("cli: error when --pen is missing") {
+    require_cli_present();
     namespace fs = std::filesystem;
     fs::path tmp = fs::temp_directory_path() / ("tp2_cli_err_pen_" + std::to_string(::getpid()));
     fs::remove_all(tmp);
@@ -129,6 +138,7 @@ TEST_CASE("cli: error when --pen is missing") {
 }
 
 TEST_CASE("cli: error when mode is invalid (exit 2)") {
+    require_cli_present();
     namespace fs = std::filesystem;
     fs::path tmp = fs::temp_directory_path() / ("tp2_cli_badmode_" + std::to_string(::getpid()));
     fs::remove_all(tmp);
@@ -152,6 +162,7 @@ TEST_CASE("cli: error when mode is invalid (exit 2)") {
 }
 
 TEST_CASE("cli: help prints and exits 0") {
+    require_cli_present();
     int rc = std::system("./bin/tp2_cli --help > /dev/null 2>&1");
     int ec = exit_status_from_system(rc);
     REQUIRE(ec == 0);

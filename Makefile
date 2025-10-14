@@ -30,7 +30,7 @@ TEST_BIN := $(BIN_DIR)/tests
 
 # External single-header Catch2 expected at repo root as catch.hpp
 
-.PHONY: all test lint static memcheck coverage doc clean debug run
+.PHONY: all test lint static memcheck coverage doc clean debug run app
 
 all: $(TEST_BIN)
 
@@ -56,6 +56,7 @@ $(APP_BIN): | $(BIN_DIR)
 else
 $(APP_BIN): $(CORE_OBJS) $(SRC_DIR)/main.cpp | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $(CORE_OBJS) $(SRC_DIR)/main.cpp -o $(APP_BIN) $(LDFLAGS)
+	@chmod +x $(APP_BIN)
 endif
 
 test: $(TEST_BIN) $(APP_BIN)
@@ -63,6 +64,9 @@ test: $(TEST_BIN) $(APP_BIN)
 
 run: $(APP_BIN)
 	$(APP_BIN)
+
+# Convenience target to build the CLI app explicitly
+app: $(APP_BIN)
 
 lint:
 	@echo "Running cpplint..."
@@ -90,7 +94,7 @@ memcheck: $(TEST_BIN)
 
 coverage: CXXFLAGS += -g -O0 $(COVERAGE_FLAGS)
 coverage: LDFLAGS += -lgcov
-coverage: clean $(TEST_BIN)
+coverage: clean $(TEST_BIN) $(APP_BIN)
 	@echo "Running tests with coverage..."
 	$(TEST_BIN)
 	@echo "Capturing lcov data..."

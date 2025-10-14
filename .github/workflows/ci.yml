@@ -23,6 +23,11 @@ jobs:
       - name: Build CLI
         run: make bin/tp2_cli
 
+      - name: Verify CLI exists
+        run: |
+          ls -l bin || true
+          test -x bin/tp2_cli
+
       - name: Build and test
         run: make test
 
