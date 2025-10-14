@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [ develop, main ]
+  pull_request:
+    branches: [ develop, main ]
+
+jobs:
+  build-test-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ make cppcheck valgrind lcov doxygen python3-pip
+          pip3 install --user cpplint
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build and test
+        run: make test
+
+      - name: Lint
+        run: make lint
+
+      - name: Static analysis
+        run: make static
+
+      - name: Coverage
+        run: make coverage
+
+      - name: Upload coverage HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: build/coverage_html
+          if-no-files-found: warn
+
+      - name: Upload cppcheck report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cppcheck-report
+          path: build/cppcheck-report.txt
+          if-no-files-found: warn
