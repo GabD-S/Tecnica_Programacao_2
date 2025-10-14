@@ -51,6 +51,33 @@ TEST_CASE("cli: smoke test for backup mode") {
     fs::remove_all(tmp);
 }
 
+TEST_CASE("cli: smoke test for restore mode") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::temp_directory_path() / ("tp2_cli_restore_" + std::to_string(::getpid()));
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+
+    // Create a file only on PEN and list it in parm
+    std::ofstream(tmp / "pen" / "CLI_R.txt") << "from-pen";
+    std::ofstream(tmp / "Backup.parm") << "CLI_R.txt\n";
+
+    auto q = [](const fs::path& p) { return std::string("\"") + p.string() + "\""; };
+    std::string cmd = std::string("./bin/tp2_cli ") +
+                      "--mode restore " +
+                      "--hd " + q(tmp / "hd") + " " +
+                      "--pen " + q(tmp / "pen") + " " +
+                      "--parm " + q(tmp / "Backup.parm");
+
+    int rc = std::system(cmd.c_str());
+    int ec = exit_status_from_system(rc);
+    REQUIRE(ec == 0);
+    REQUIRE(fs::exists(tmp / "hd" / "CLI_R.txt"));
+    std::string got; { std::ifstream in(tmp / "hd" / "CLI_R.txt"); std::getline(in, got);} 
+    REQUIRE(got == "from-pen");
+    fs::remove_all(tmp);
+}
+
 TEST_CASE("cli: error when --hd is missing") {
     namespace fs = std::filesystem;
     fs::path tmp = fs::temp_directory_path() / ("tp2_cli_err_hd_" + std::to_string(::getpid()));
@@ -99,4 +126,33 @@ TEST_CASE("cli: error when --pen is missing") {
     std::string all((std::istreambuf_iterator<char>(err)), std::istreambuf_iterator<char>());
     REQUIRE(all.find("Missing required --pen") != std::string::npos);
     fs::remove_all(tmp);
+}
+
+TEST_CASE("cli: error when mode is invalid (exit 2)") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::temp_directory_path() / ("tp2_cli_badmode_" + std::to_string(::getpid()));
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    fs::create_directories(tmp / "pen");
+    std::ofstream(tmp / "Backup.parm") << "X.txt\n";
+    auto q = [](const fs::path& p) { return std::string("\"") + p.string() + "\""; };
+    std::string cmd = std::string("./bin/tp2_cli ") +
+                      "--mode banana " +
+                      "--hd " + q(tmp / "hd") + " " +
+                      "--pen " + q(tmp / "pen") + " " +
+                      "--parm " + q(tmp / "Backup.parm") +
+                      " 2>" + q(tmp / "stderr.txt");
+    int rc = std::system(cmd.c_str());
+    int ec = exit_status_from_system(rc);
+    REQUIRE(ec == 2);
+    std::ifstream err(tmp / "stderr.txt");
+    std::string all((std::istreambuf_iterator<char>(err)), std::istreambuf_iterator<char>());
+    REQUIRE(all.find("Unsupported mode: banana") != std::string::npos);
+    fs::remove_all(tmp);
+}
+
+TEST_CASE("cli: help prints and exits 0") {
+    int rc = std::system("./bin/tp2_cli --help > /dev/null 2>&1");
+    int ec = exit_status_from_system(rc);
+    REQUIRE(ec == 0);
 }
