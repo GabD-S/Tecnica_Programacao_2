@@ -50,3 +50,53 @@ TEST_CASE("cli: smoke test for backup mode") {
 
     fs::remove_all(tmp);
 }
+
+TEST_CASE("cli: error when --hd is missing") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::temp_directory_path() / ("tp2_cli_err_hd_" + std::to_string(::getpid()));
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "pen");
+    // Write a parm file to avoid param-file-missing masking the CLI validation
+    std::ofstream(tmp / "Backup.parm") << "X.txt\n";
+
+    auto q = [](const fs::path& p) { return std::string("\"") + p.string() + "\""; };
+    std::string cmd = std::string("./bin/tp2_cli ") +
+                      "--mode backup " +
+                      // intentionally omit --hd
+                      "--pen " + q(tmp / "pen") + " " +
+                      "--parm " + q(tmp / "Backup.parm") +
+                      " 2>" + q(tmp / "stderr.txt");
+
+    int rc = std::system(cmd.c_str());
+    int ec = exit_status_from_system(rc);
+    REQUIRE(ec == 1);
+    // Check helpful error message
+    std::ifstream err(tmp / "stderr.txt");
+    std::string all((std::istreambuf_iterator<char>(err)), std::istreambuf_iterator<char>());
+    REQUIRE(all.find("Missing required --hd") != std::string::npos);
+    fs::remove_all(tmp);
+}
+
+TEST_CASE("cli: error when --pen is missing") {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::temp_directory_path() / ("tp2_cli_err_pen_" + std::to_string(::getpid()));
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "hd");
+    std::ofstream(tmp / "Backup.parm") << "X.txt\n";
+
+    auto q = [](const fs::path& p) { return std::string("\"") + p.string() + "\""; };
+    std::string cmd = std::string("./bin/tp2_cli ") +
+                      "--mode backup " +
+                      "--hd " + q(tmp / "hd") + " " +
+                      // intentionally omit --pen
+                      "--parm " + q(tmp / "Backup.parm") +
+                      " 2>" + q(tmp / "stderr.txt");
+
+    int rc = std::system(cmd.c_str());
+    int ec = exit_status_from_system(rc);
+    REQUIRE(ec == 1);
+    std::ifstream err(tmp / "stderr.txt");
+    std::string all((std::istreambuf_iterator<char>(err)), std::istreambuf_iterator<char>());
+    REQUIRE(all.find("Missing required --pen") != std::string::npos);
+    fs::remove_all(tmp);
+}
