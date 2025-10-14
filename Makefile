@@ -67,10 +67,15 @@ run: $(APP_BIN)
 lint:
 	@echo "Running cpplint..."
 	# Quote paths to handle spaces and use find to expand files robustly
-	@python3 cpplint.py --filter=-build/include_subdir --extensions=hpp,cpp \
-		`find "$(SRC_DIR)" -maxdepth 1 -name '*.cpp' -print` \
-		`find "$(INC_DIR)" -maxdepth 1 -name '*.hpp' -print` \
-		`find "$(TEST_DIR)" -maxdepth 1 -name '*.cpp' -print` || true
+	@set -e; \
+	if command -v cpplint >/dev/null 2>&1; then LINT_CMD=cpplint; else LINT_CMD="python3 cpplint.py"; fi; \
+	FILES="`find "$(SRC_DIR)" -maxdepth 1 -name '*.cpp' -print; \
+			 find "$(INC_DIR)" -maxdepth 1 -name '*.hpp' -print; \
+			 find "$(TEST_DIR)" -maxdepth 1 -name '*.cpp' -print`"; \
+	for f in $$FILES; do \
+		echo "cpplint: $$f"; \
+		LC_ALL=C.UTF-8 $$LINT_CMD --filter=-build/include_subdir --extensions=hpp,cpp "$$f" || true; \
+	done
 
 static:
 	@echo "Running cppcheck..."
